@@ -1,0 +1,27 @@
+name: Unit Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]        
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build and test 
+      run: |
+        GIT_COMMIT=$(git rev-parse HEAD)
+        BUILD_ID=$(date '+%Y%m%d')-$(git rev-parse HEAD | cut -c -5)
+        IMAGE_TAG=main_${BUILD_ID}
+        BASE_IMAGE_TAG=$(cat BASE_IMAGE_TAG | awk -F= '{print $2}')
+
+        docker build -t modelmesh:${IMAGE_TAG} \
+          --build-arg imageVersion=${IMAGE_TAG} \
+          --build-arg buildId=${BUILD_ID} \
+          --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} \
+          --build-arg commitSha=${GIT_COMMIT} .

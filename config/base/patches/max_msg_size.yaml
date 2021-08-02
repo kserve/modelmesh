@@ -1,0 +1,31 @@
+# Copyright 2021 IBM Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Use this patch to change the max size in bytes allowed
+# per proxied gRPC message, for headers and data
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-mesh
+spec:
+  template:
+    spec:
+      containers:
+        - name: mm
+          env:
+            - name: MM_SVC_GRPC_MAX_MSG_SIZE
+              value: "16777216" # default is 16777216 (16MiB)
+            - name: GRPC_MAX_HEADERS_SIZE_ENV_VAR
+              value: "8196" # default is 8196 (8KiB)

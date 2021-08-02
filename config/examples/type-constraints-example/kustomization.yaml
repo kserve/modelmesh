@@ -1,0 +1,84 @@
+# Copyright 2021 IBM Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Example overlay for custom model runtime
+#
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: model-serving
+
+nameSuffix: -tc-example
+
+commonLabels:
+  app: model-mesh-tc-example
+
+resources:
+  - gpu-deployment
+  - non-gpu-deployment
+  - ../../base/service.yaml
+
+patches:
+  - path: runtime_patch_common.yaml
+    target: {labelSelector: component=model-mesh}
+    # Use secret generated below for etcd server configuration
+  - path: ../../base/patches/etcd.yaml
+    target: {labelSelector: component=model-mesh}
+    # Enable TLS
+  - path: ../../base/patches/tls.yaml
+    target: {labelSelector: component=model-mesh}
+    # Enable prometheus metrics
+  - path: ../../base/patches/prometheus_metrics.yaml
+    target: {labelSelector: component=model-mesh}
+
+vars:
+  - name: MM_SERVICE_NAME
+    objref:
+      kind: Service
+      name: model-mesh
+      apiVersion: v1
+    fieldref:
+      fieldpath: metadata.name
+
+configMapGenerator:
+  - name: model-mesh-tc
+    literals:
+      # Json object defines mapping between model types and
+      # required and/or preferred labels
+      - >-
+        type_constraints={
+          "gpu-type": {
+            "required": ["gpu"]
+          },
+          "pref-gpu-type": {
+            "preferred": ["gpu"]
+          }
+        }
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+# secretGenerator:
+#   - name: model-mesh-etcd-config
+#     files:
+#     - tls.crt
+#     literals:
+#     - etcd_connection: |
+#{
+#  "endpoints": "https://etcd-service-hostame:15182",
+#  "userid": "userid",
+#  "password": "password",
+#  "root_prefix": "unique-chroot-prefix",
+#  "certificate_file": "tls.crt"
+#}

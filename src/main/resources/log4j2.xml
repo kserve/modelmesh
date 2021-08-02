@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright 2021 IBM Corp. All Rights Reserved.
+
+  Licensed under the Apache License, Version 2.0 (the "License"); you may not
+  use this file except in compliance with the License. You may obtain a copy
+  of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+  License for the specific language governing permissions and limitations
+  under the License.
+-->
+
+<Configuration status="info">
+    <Properties>
+        <Property name="logname">/opt/kserve/mmesh/log/log4j2</Property>
+    </Properties>
+    <Appenders>
+        <Console name="jsonconsole" follow="false" direct="true">
+            <JSONLayout compact="true" eventEol="true" properties="true"/>
+        </Console>
+
+        <!--
+         Write a human-readable logfile which won't be captured by logstash.
+         If configured as such, it could be a mounted volume, which would
+         provide a backup source of log messages.
+        -->
+        <RollingFile name="plainfile"
+            fileName="${logname}.txt" filePattern="${logname}.%i.txt">
+
+            <PatternLayout pattern="%d{yyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{1.} - %msg %X%n"/>
+            <SizeBasedTriggeringPolicy size="25MB"/>
+            <DefaultRolloverStrategy fileIndex="min" max="10"/>
+        </RollingFile>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="jsonconsole"/>
+            <AppenderRef ref="plainfile"/>
+        </Root>
+    </Loggers>
+</Configuration>

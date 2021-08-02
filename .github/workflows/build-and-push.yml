@@ -1,0 +1,37 @@
+name: Build and Push
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [closed]
+
+jobs:
+  build:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build runtime image 
+      run: |
+        GIT_COMMIT=$(git rev-parse HEAD)
+        BUILD_ID=$(date '+%Y%m%d')-$(git rev-parse HEAD | cut -c -5)
+        IMAGE_TAG=main_${BUILD_ID}
+        BASE_IMAGE_TAG=$(cat BASE_IMAGE_TAG | awk -F= '{print $2}')
+
+        docker build -t modelmesh:${IMAGE_TAG} \
+          --build-arg imageVersion=${IMAGE_TAG} \
+          --build-arg buildId=${BUILD_ID} \
+          --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} \
+          --build-arg commitSha=${GIT_COMMIT} .
+
+    - name: Log in to docker hub
+      run: docker login -u ${{ secrets.DOCKER_USER }} -p ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Push to docker hub
+      run: |
+        IMAGE_NAME=modelmesh
+        IMAGE_ID=kserve/$IMAGE_NAME
+        IMAGE_VERSION=latest
+
+        docker push $IMAGE_ID:$IMAGE_VERSION

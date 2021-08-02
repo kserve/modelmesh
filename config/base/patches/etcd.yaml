@@ -1,0 +1,24 @@
+# This patch configures connection to an etcd cluster using a
+# json-valued secret of the form described here:
+# https://github.com/IBM/etcd-java/blob/master/etcd-json-schema.md
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-mesh
+spec:
+  template:
+    spec:
+      containers:
+        - name: mm
+          env:
+            - name: KV_STORE
+              value: etcd:/opt/kserve/mmesh/etcd/etcd_connection
+          volumeMounts:
+            - name: etcd-config
+              readOnly: true
+              mountPath: /opt/kserve/mmesh/etcd
+      volumes:
+        - name: etcd-config
+          secret:
+            secretName: model-mesh-icd-etcd

@@ -1,0 +1,44 @@
+/*
+ * Copyright 2021 IBM Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
+syntax = "proto3";
+package com.ibm.watson.tas.internal.proto;
+
+import "current/model-runtime.proto";
+
+// this service interface is DEPRECATED
+// mmesh.ModelRuntime defined in model-runtime.proto should be used instead
+service ModelServer {
+
+  // load a model, return when model is fully loaded.
+  // include size of loaded model in response if no additional cost
+  rpc loadModel (mmesh.LoadModelRequest) returns (mmesh.LoadModelResponse) {}
+
+  // unload a previously loaded (or failed) model. return when model
+  // is fully unloaded, or immediately if not found/loaded
+  rpc unloadModel (mmesh.UnloadModelRequest) returns (mmesh.UnloadModelResponse) {}
+
+  // predict size of not-yet-loaded model - must return almost immediately.
+  // should not perform expensive computation or remote lookups
+  // should be a conservative estimate
+  rpc predictModelSize (mmesh.PredictModelSizeRequest) returns (mmesh.PredictModelSizeResponse) {}
+
+  // calculate size (memory consumption) of currently-loaded model
+  rpc modelSize (mmesh.ModelSizeRequest) returns (mmesh.ModelSizeResponse) {}
+
+  // provide basic runtime status and parameters; called only during startup
+  rpc runtimeStatus (mmesh.RuntimeStatusRequest) returns (mmesh.RuntimeStatusResponse) {}
+}

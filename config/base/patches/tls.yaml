@@ -1,0 +1,50 @@
+# Copyright 2021 IBM Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This patch enables server-auth TLS for external connections
+# to the gRPC service. The same certificates will also be used to
+# secure internal communcation between the model-mesh pods.
+#
+# It can be used in conjunction with a kustomize secretGenerator,
+# for example include in your overlay kustomization.yaml:
+#
+# secretGenerator:
+#   - name: model-mesh-tls-secret
+#     type: kubernetes.io/tls
+#     files:
+#     - tls.key
+#     - tls.crt
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-mesh
+spec:
+  template:
+    spec:
+      containers:
+        - name: mm
+          env:
+            - name: MM_TLS_KEY_CERT_PATH
+              value: /opt/kserve/mmesh/tls/tls.crt
+            - name: MM_TLS_PRIVATE_KEY_PATH
+              value: /opt/kserve/mmesh/tls/tls.key
+          volumeMounts:
+            - name: tls-certs
+              readOnly: true
+              mountPath: /opt/kserve/mmesh/tls
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: model-mesh-tls-secret

@@ -1,0 +1,511 @@
+<!--
+  Copyright 2021 IBM Corp. All Rights Reserved.
+
+  Licensed under the Apache License, Version 2.0 (the "License"); you may not
+  use this file except in compliance with the License. You may obtain a copy
+  of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+  License for the specific language governing permissions and limitations
+  under the License.
+-->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.ibm.watson</groupId>
+  <artifactId>model-mesh</artifactId>
+  <version>0.4.2-SNAPSHOT</version>
+  <name>model-mesh framework</name>
+  <description>Model serving framework</description>
+
+  <licenses>
+    <license>
+        <name>The Apache License, Version 2.0</name>
+        <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+
+  <developers>
+      <developer>
+          <id>njhill</id>
+          <name>Nick Hill</name>
+          <email>nickhill@us.ibm.com</email>
+          <organization>IBM</organization>
+      </developer>
+  </developers>
+
+  <scm>
+      <connection>scm:git:git@github.com:kserve/modelmesh.git</connection>
+      <developerConnection>scm:git:git@github.com:kserve/modelmesh.git</developerConnection>
+      <url>https://github.com/kserve/modelmesh</url>
+  </scm>
+
+  <properties>
+    <BUILD_NUMBER></BUILD_NUMBER>
+    <maven.build.timestamp.format>yyyyMMdd-HHmm</maven.build.timestamp.format>
+    <build.timestamp>${maven.build.timestamp}</build.timestamp>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+    <!-- Jenkins specific config -->
+    <!--suppress UnresolvedMavenProperty -->
+    <buildRequesterUserId>${env.buildRequesterUserId}</buildRequesterUserId>
+    <!--suppress UnresolvedMavenProperty -->
+    <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
+
+    <grpc-version>1.39.0</grpc-version>
+    <netty-version>4.1.66.Final</netty-version>
+    <netty-tcnative-version>2.0.40.Final</netty-tcnative-version>
+    <litelinks-version>1.7.0</litelinks-version>
+    <kv-utils-version>0.5.0</kv-utils-version>
+    <etcd-java-version>0.0.18</etcd-java-version>
+    <protobuf-version>3.17.3</protobuf-version>
+    <annotation-version>9.0.50</annotation-version>
+    <guava-version>30.1.1-jre</guava-version>
+    <jackson-databind-version>2.12.4</jackson-databind-version>
+    <eclipse-collections-version>10.4.0</eclipse-collections-version>
+    <log4j2-version>2.14.1</log4j2-version>
+    <slf4j-version>1.7.31</slf4j-version>
+    <prometheus-version>0.9.0</prometheus-version>
+    <junit-version>5.7.2</junit-version>
+
+    <dockerhome>${project.build.directory}/dockerhome</dockerhome>
+    <skipTests>false</skipTests>
+  </properties>
+
+  <build>
+    <sourceDirectory>src/main/java</sourceDirectory>
+    <testSourceDirectory>src/test/java</testSourceDirectory>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+    </resources>
+    <testResources>
+      <testResource>
+        <directory>src/test/resources</directory>
+      </testResource>
+    </testResources>
+    <extensions>
+      <extension>
+        <groupId>kr.motd.maven</groupId>
+        <artifactId>os-maven-plugin</artifactId>
+        <version>1.7.0</version>
+      </extension>
+    </extensions>
+    <plugins>
+      <plugin>
+        <groupId>org.xolstice.maven.plugins</groupId>
+        <artifactId>protobuf-maven-plugin</artifactId>
+        <version>0.6.1</version>
+        <configuration>
+          <protocArtifact>com.google.protobuf:protoc:${protobuf-version}:exe:${os.detected.classifier}</protocArtifact>
+          <pluginId>grpc-java</pluginId>
+          <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc-version}:exe:${os.detected.classifier}</pluginArtifact>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>compile</goal>
+              <goal>compile-custom</goal>
+              <goal>test-compile</goal>
+              <goal>test-compile-custom</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.8.1</version>
+        <configuration>
+          <release>11</release>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <!-- problem retrieving org.apache.maven:maven-archiver:pom:3.5.0 dep of 3.2.0 -->
+        <version>3.1.2</version>
+        <configuration>
+          <outputDirectory>${dockerhome}/lib</outputDirectory>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <!-- <version>2.22.2</version> -->
+        <version>3.0.0-M5</version>
+        <!-- don't run tests in parallel for now -->
+        <configuration>
+          <useFile>false</useFile> <!-- log full results to console -->
+          <skipTests>${skipTests}</skipTests>
+          <reuseForks>false</reuseForks>
+          <forkCount>1</forkCount>
+          <forkNode implementation="org.apache.maven.plugin.surefire.extensions.SurefireForkNodeFactory"/>
+          <!-- log WARN+ to stdout, include litelinks, netty and grpc args which we use when running for real -->
+          <argLine>-Dlog4j.configurationFile=${project.build.directory}/test-classes/log4j2-test.xml
+            -Dio.netty.tryReflectionSetAccessible=true -Dio.grpc.netty.useCustomAllocator=false
+            -Dlitelinks.produce_pooled_bytebufs=true -Dlitelinks.cancel_on_client_close=true
+            -Dlitelinks.ssl.use_jdk=false
+          </argLine>
+          <!-- required to workaround issue with openjdk 8u181-b13-2 -->
+          <useSystemClassLoader>false</useSystemClassLoader>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.1.2</version>
+        <executions>
+          <execution>
+            <phase>process-sources</phase>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
+            <configuration>
+              <includeScope>runtime</includeScope>
+              <outputDirectory>${dockerhome}/lib</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.2.0</version>
+        <executions>
+
+          <execution>
+            <id>resources</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${dockerhome}/lib</outputDirectory>
+            </configuration>
+          </execution>
+
+          <execution>
+            <id>copy-resources-dockerfile</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${project.basedir}</directory>
+                  <includes>
+                    <include>Dockerfile</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+
+          <execution>
+            <id>copy-resources</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${dockerhome}</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${project.basedir}/src/main/scripts</directory>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+
+    <pluginManagement>
+      <plugins>
+        <!--This plugin's configuration is used to store Eclipse
+            m2e settings only. It has no influence on the Maven build itself. -->
+        <plugin>
+          <groupId>org.eclipse.m2e</groupId>
+          <artifactId>lifecycle-mapping</artifactId>
+          <version>1.0.0</version>
+          <configuration>
+            <lifecycleMappingMetadata>
+              <pluginExecutions>
+                <pluginExecution>
+                  <pluginExecutionFilter>
+                    <groupId>
+                      org.apache.maven.plugins
+                    </groupId>
+                    <artifactId>
+                      maven-dependency-plugin
+                    </artifactId>
+                    <versionRange>[2.1,)</versionRange>
+                    <goals>
+                      <goal>copy-dependencies</goal>
+                    </goals>
+                  </pluginExecutionFilter>
+                  <action>
+                    <ignore></ignore>
+                  </action>
+                </pluginExecution>
+              </pluginExecutions>
+            </lifecycleMappingMetadata>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+
+  <distributionManagement>
+    <snapshotRepository>
+        <id>ossrh</id>
+        <name>Central Repository OSSRH</name>
+        <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+    </snapshotRepository>
+  </distributionManagement>
+
+  <dependencies>
+
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
+      <version>${guava-version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.ibm.utils</groupId>
+      <artifactId>kv-utils</artifactId>
+    </dependency>
+
+    <!-- etcd-java only required/used when etcd is configured -->
+    <dependency>
+      <groupId>com.ibm.etcd</groupId>
+      <artifactId>etcd-java</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>com.ibm.utils.litelinks</groupId>
+      <artifactId>litelinks-core</artifactId>
+      <version>${litelinks-version}</version>
+    </dependency>
+
+    <!--  <dependency>
+        <groupId>com.github.ben-manes.caffeine</groupId>
+        <artifactId>caffeine</artifactId>
+        <version>2.3.1</version>
+    </dependency> -->
+    <dependency>
+      <groupId>com.googlecode.concurrentlinkedhashmap</groupId>
+      <artifactId>concurrentlinkedhashmap-lru</artifactId>
+      <version>1.4.2</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
+      <version>3.0.2</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- Prometheus metrics -->
+    <dependency>
+      <groupId>io.prometheus</groupId>
+      <artifactId>simpleclient</artifactId>
+      <version>${prometheus-version}</version>
+    </dependency>
+    <!-- Prometheus metrics - for TextFormat class -->
+    <dependency>
+      <groupId>io.prometheus</groupId>
+      <artifactId>simpleclient_common</artifactId>
+      <version>${prometheus-version}</version>
+    </dependency>
+    <!-- Prometheus metrics Hotspot JVM metrics-->
+    <dependency>
+      <groupId>io.prometheus</groupId>
+      <artifactId>simpleclient_hotspot</artifactId>
+      <version>${prometheus-version}</version>
+    </dependency>
+
+    <dependency>
+      <!-- used only for int list, dep can easily be removed if necessary -->
+      <groupId>org.eclipse.collections</groupId>
+      <artifactId>eclipse-collections</artifactId>
+      <version>${eclipse-collections-version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson-databind-version}</version>
+    </dependency>
+
+    <!-- BEGIN: Logging dependencies -->
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
+      <version>${log4j2-version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
+      <version>${log4j2-version}</version>
+    </dependency>
+    <dependency>
+      <!-- This dependency is included so that code using the log4j
+          1.x API ends up having the log messages handled by log4j 2.x. -->
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-1.2-api</artifactId>
+      <version>${log4j2-version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <!-- This dependency is included so that code using the SLF4J
+          logging API ends up having the log messages handled by log4j 2.x. -->
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j-impl</artifactId>
+      <version>${log4j2-version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <!-- This dependency is included so that code using the Apache
+          commons logging API ends up having the log messages handled by log4j 2.x. -->
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-jcl</artifactId>
+      <version>${log4j2-version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- For the log4j 2.x JSONLayout class -->
+    <dependency>
+      <groupId>javax.json</groupId>
+      <artifactId>javax.json-api</artifactId>
+      <version>1.1.4</version>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- it also uses jackson-databind, declared above -->
+
+    <!-- END: Logging Dependencies -->
+
+    <dependency>
+      <groupId>com.datadoghq</groupId>
+      <artifactId>java-dogstatsd-client</artifactId>
+      <version>2.7</version>
+      <exclusions>
+        <!-- This is only needed for UDS channels,
+             and brings in a bunch of transitive deps -->
+        <exclusion>
+          <groupId>com.github.jnr</groupId>
+          <artifactId>jnr-unixsocket</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport-native-epoll</artifactId>
+      <classifier>linux-x86_64</classifier>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-tcnative-boringssl-static</artifactId>
+      <version>${netty-tcnative-version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-protobuf</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-stub</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-netty</artifactId>
+    </dependency>
+
+    <!-- This is required for compiling on java11+, to provide
+       the @Generated annotation used in the protoc-generated
+       gRPC stubs. "provided" scope is sufficient since this
+       annotation only has source retention. -->
+    <dependency>
+      <groupId>org.apache.tomcat</groupId>
+      <artifactId>tomcat-annotations-api</artifactId>
+      <version>${annotation-version}</version>
+      <scope>provided</scope>
+    </dependency>
+
+
+    <!-- test scope dependencies -->
+
+    <dependency>
+      <groupId>org.apache.curator</groupId>
+      <artifactId>curator-test</artifactId>
+      <version>2.13.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <version>${junit-version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <version>${junit-version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.google.protobuf</groupId>
+        <artifactId>protobuf-java</artifactId>
+        <version>${protobuf-version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-bom</artifactId>
+        <version>${netty-version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.ibm.etcd</groupId>
+        <artifactId>etcd-java</artifactId>
+        <version>${etcd-java-version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.ibm.utils</groupId>
+        <artifactId>kv-utils</artifactId>
+        <version>${kv-utils-version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j-version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.grpc</groupId>
+        <artifactId>grpc-bom</artifactId>
+        <version>${grpc-version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>

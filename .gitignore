@@ -1,0 +1,38 @@
+*.class
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files #
+*.jar
+*.war
+*.ear
+
+# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*
+/target/
+/.settings/
+/.classpath
+/.project
+/bin/
+
+# intellij IDE
+.idea/
+*.iml
+
+# mac os
+.DS_Store
+
+# ignore local etcd and repo directory
+default.etcd/
+repository/
+start_etcd.sh
+
+# VSCode
+.vscode/
+.factorypath
+
+# ASoC Scan
+.scans/
+SAClient*
+

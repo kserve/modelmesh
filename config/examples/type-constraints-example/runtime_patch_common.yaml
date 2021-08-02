@@ -1,0 +1,67 @@
+# Copyright 2021 IBM Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-mesh
+spec:
+  template:
+    spec:
+      containers:
+        - name: model-server
+          # In this example the model server image and resource config is the same
+          # between the different deployments (they vary only by their nodeselector
+          # and MM_LABELS env var). For use cases where the image and/or other config
+          # varies between the sub-deployments, just move to their respective patches
+          # (the kustomizations in the gpu-deployment and non-gpu-deployment subdirs)
+          image: example/modelmesh-example:latest
+          resources:
+            requests:
+              cpu: 200m
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+
+        # Set terminationGracePeriodSeconds and the mm container
+        # SHUTDOWN_TIMEOUT_MS env var to the same value (though different units)
+        # depending on average model loading times and configured loading
+        # concurrency (to ensure propagation of models to other pods can complete
+        # during shutdown)
+
+        - name: mm
+          env:
+            - name: SHUTDOWN_TIMEOUT_MS
+              value: "90000"
+
+            - name: MM_TYPE_CONSTRAINTS_PATH
+              value: /etc/kserve/mmesh/config/type_constraints
+            # This is an alternative to using a configmap + mounted volume.
+            # Not recommended since it's important that the config used by all
+            # of the deployments is kept in sync.
+            #- name: MM_TYPE_CONSTRAINTS
+            #  value: '{"gpu-type" : {"required" : ["gpu"]}, "pref-gpu-type" : {"preferred" : ["gpu"]}}'
+          volumeMounts:
+            - name: tc-config
+              mountPath: /etc/kserve/mmesh/config
+
+      volumes:
+        - name: tc-config
+          configMap:
+            name: model-mesh-tc
+
+      terminationGracePeriodSeconds: 90
+
+       # Credentials for secure image registry if required
+#      imagePullSecrets:
+#        - name: image-registry-credentials

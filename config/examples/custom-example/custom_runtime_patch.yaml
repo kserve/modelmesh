@@ -1,0 +1,46 @@
+# Copyright 2021 IBM Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-mesh
+spec:
+  template:
+    spec:
+      containers:
+        - name: model-server
+          image: example/modelmesh-example:latest
+          resources:
+            requests:
+              cpu: 200m
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+
+        # Set terminationGracePeriodSeconds and the mm container
+        # SHUTDOWN_TIMEOUT_MS env var to the same value (though different units)
+        # depending on average model loading times and configured loading
+        # concurrency (to ensure propagation of models to other pods can complete
+        # during shutdown)
+
+        - name: mm
+          env:
+            - name: SHUTDOWN_TIMEOUT_MS
+              value: "90000"
+
+      terminationGracePeriodSeconds: 90
+
+       # Credentials for secure image registry if required
+#      imagePullSecrets:
+#        - name: image-registry-credentials
