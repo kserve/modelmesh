@@ -146,6 +146,7 @@
         <!-- don't run tests in parallel for now -->
         <configuration>
           <useFile>false</useFile> <!-- log full results to console -->
+          <trimStackTrace>false</trimStackTrace>
           <skipTests>${skipTests}</skipTests>
           <reuseForks>false</reuseForks>
           <forkCount>1</forkCount>

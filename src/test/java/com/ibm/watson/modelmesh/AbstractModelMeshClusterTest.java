@@ -141,21 +141,25 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
                     .uri(URI.create("http://localhost:" + probePort + "/ready")).build();
 
             // Wait until ready
+            String notReadyErr = null;
             for (int i = 0; i < 40; i++) {
                 if (!mmProc.isAlive()) {
-                    throw new Exception("ModelMesh process failed to start, exit code: "
-                                        + mmProc.exitValue());
+                    throw new Exception("ModelMesh process failed to start, exit code: " + mmProc.exitValue());
                 }
                 try {
-                    if (hclient.send(readyRequest, BodyHandlers.discarding()).statusCode() == 200) {
+                    int sc = hclient.send(readyRequest, BodyHandlers.discarding()).statusCode();
+                    if (sc == 200) {
                         ok = true;
                         return stopper;
                     }
+                    notReadyErr = "ModelMesh readiness probe returned " + sc;
                 } catch (ConnectException ce) {
+                    notReadyErr = String.valueOf(ce);
                 }
                 Thread.sleep(500);
             }
-            throw new TimeoutException("ModelMesh process did not become ready within 20sec");
+            throw new TimeoutException("ModelMesh process did not become ready within 20sec"
+                    + (notReadyErr != null ? ": " + notReadyErr : ""));
         } finally {
             if (!ok) {
                 stopper.close();
