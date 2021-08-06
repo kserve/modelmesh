@@ -56,7 +56,7 @@ LABEL image="build"
 
 COPY / /build
 
-RUN mvn -Dmaven.repo.local=repo -DskipTests=true -B clean install
+RUN mvn -B package -DskipTests=true --file pom.xml
 
 ###############################################################################
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.4
