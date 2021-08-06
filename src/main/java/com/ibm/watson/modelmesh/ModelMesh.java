@@ -5368,7 +5368,7 @@ public abstract class ModelMesh extends ThriftService
                 long now = currentTimeMillis(), lastDone = now - lastPublished;
                 // don't even check if last publish was < 2sec ago
                 if (!preShutdown && (lastDone < INSTANCE_REC_PUBLISH_MIN_PERIOD_MS
-                        || !(force && lastDone < (INSTANCE_REC_PUBLISH_FREQ_MS - 1000L)))) {
+                        || (!force && lastDone < (INSTANCE_REC_PUBLISH_FREQ_MS - 1000L)))) {
                     return;
                 }
 

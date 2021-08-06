@@ -45,11 +45,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Train-and-serve runtime service unit tests
@@ -257,16 +257,33 @@ public class ModelMeshTest {
         clusterInstanceTable.start(3L, TimeUnit.MINUTES);
     }
 
-    private boolean modelInTasRegistry(String modelId, TableView<ModelRecord> registry) {
-        try {
-            ModelRecord mr = registry.get(modelId);
-            if (mr != null) {
-                return true;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+    private static boolean modelInTasRegistry(String modelId, TableView<ModelRecord> registry) {
+        return registry.get(modelId) != null;
+    }
+
+    private static void assertSingleModelLoaded(TableView<InstanceRecord> instanceRegistry) {
+        int count = 0;
+        long used = 0;
+        for (Entry<String, InstanceRecord> ent : instanceRegistry) {
+            InstanceRecord ir = ent.getValue();
+            assertTrue(ir.getCount() <= 1);
+            count += ir.getCount();
+            used += ir.getUsed();
+            assertTrue(ir.getCapacity() > 0);
+            assertTrue(ir.getUsed() <= ir.getCapacity());
         }
-        return false;
+        assertTrue(count > 0 && count <= instanceRegistry.getCount());
+        assertTrue(used > 0);
+    }
+
+    private static void assertNoModelsLoaded(TableView<InstanceRecord> instanceRegistry) {
+        for (Entry<String, InstanceRecord> ent : instanceRegistry) {
+            InstanceRecord ir = ent.getValue();
+            assertEquals(0, ir.getCount());
+            assertEquals(0, ir.getUsed());
+            assertEquals(0, ir.getLoadingInProgress());
+            assertTrue(ir.getCapacity() > 0);
+        }
     }
 
     private void testLoadDestroy(LegacyModelMeshService.Iface client, TableView<ModelRecord> registry,
@@ -277,6 +294,10 @@ public class ModelMeshTest {
         InstanceStateUtil.logInstanceInfo(instanceInfo);
 
         String modelId = getNextModelId();
+        
+        assertNoModelsLoaded(instanceInfo);
+        assertFalse(modelInTasRegistry(modelId, registry));
+
         ModelInfo modelInfo = new ModelInfo(serviceType, modelPath);
         client.addModel(modelId, modelInfo, true, false);
         boolean loaded = false;
@@ -294,6 +315,7 @@ public class ModelMeshTest {
 
         // Now make sure the ZK state looks correct
         assertTrue(modelInTasRegistry(modelId, registry));
+        assertSingleModelLoaded(instanceInfo);
         client.deleteModel(modelId);
         Thread.sleep(300);
         assertFalse(modelInTasRegistry(modelId, registry));
