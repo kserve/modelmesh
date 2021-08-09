@@ -319,6 +319,6 @@ public class ModelMeshTearDownTest {
 
     public static int killProcess(Process process) throws Exception {
         int pid = getPID(process);
-        return Runtime.getRuntime().exec("command kill -9 " + pid).waitFor();
+        return Runtime.getRuntime().exec("kill -9 " + pid).waitFor();
     }
 }
