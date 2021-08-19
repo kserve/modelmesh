@@ -62,7 +62,7 @@ import java.util.concurrent.atomic.LongAdder;
  */
 public class ExampleModelRuntime extends ModelServerImplBase {
 
-    public static final boolean FAST_MODE = "true".equals(System.getenv("FAST_MODE"));
+    public static final boolean FAST_MODE = !"false".equals(System.getenv("FAST_MODE"));
 
     public static final String DEFAULT_PORT = "8085";
 

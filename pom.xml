@@ -57,14 +57,14 @@
     <!--suppress UnresolvedMavenProperty -->
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
-    <grpc-version>1.39.0</grpc-version>
-    <netty-version>4.1.66.Final</netty-version>
+    <grpc-version>1.40.0</grpc-version>
+    <netty-version>4.1.67.Final</netty-version>
     <netty-tcnative-version>2.0.40.Final</netty-tcnative-version>
     <litelinks-version>1.7.0</litelinks-version>
     <kv-utils-version>0.5.0</kv-utils-version>
     <etcd-java-version>0.0.18</etcd-java-version>
     <protobuf-version>3.17.3</protobuf-version>
-    <annotation-version>9.0.50</annotation-version>
+    <annotation-version>9.0.52</annotation-version>
     <guava-version>30.1.1-jre</guava-version>
     <jackson-databind-version>2.12.4</jackson-databind-version>
     <eclipse-collections-version>10.4.0</eclipse-collections-version>
