@@ -133,6 +133,9 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
 
     static final CallOptions DIRECT_EXEC_CALL_OPTS = CallOptions.DEFAULT.withExecutor(directExecutor());
 
+    private static final ListenableFuture<UnloadModelResponse> UNLOAD_COMPLETE =
+        Futures.immediateFuture(UnloadModelResponse.getDefaultInstance());
+
     private static final Joiner COMMA_JOIN = Joiner.on(',');
     private static final int[] EMPTY_INT_ARRAY = new int[0];
 
@@ -484,7 +487,7 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
 
     static class UnloadFailure {
         final ExternalModel model;
-        final SettableFuture<Boolean> retryFuture = SettableFuture.create();
+        final SettableFuture<UnloadModelResponse> retryFuture = SettableFuture.create();
         final int count;
 
         public UnloadFailure(ExternalModel model, int count) {
@@ -849,27 +852,12 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
             // TODO comment on exception case
             return FluentFuture
                     .from(modelRuntime.unload(UnloadModelRequest.newBuilder().setModelId(model.modelId).build()))
-                    .transform(umr -> {
-                        if (!first) {
-                            logger.info("Model " + model.modelId + " unloaded successfully following retry");
-                        }
-                        if (fullUnloadRetryRateLimiter.tryAcquire()) {
-                            processUnloadRetryQueue(true);
-                        }
-                        synchronized (model) {
-                            model.unloadFuture = null;
-                            if (model.count == 0) {
-                                // assert model.loadFuture == null
-                                models.remove(model.modelId, model);
-                            }
-                            return Boolean.TRUE;
-                        }
-                    }, directExecutor()).catchingAsync(Exception.class, e -> {
+                    .catchingAsync(Exception.class, e -> {
                         Status status = Status.fromThrowable(e);
                         Code code = status.getCode();
                         // NOT_FOUND from unload is equivalent to successful
                         if (code == Code.NOT_FOUND) {
-                            return COMPLETED;
+                            return UNLOAD_COMPLETE;
                         }
                         // Record failed unload attempt (final failure recorded only in superclass)
                         metrics.logCounterMetric(Metric.UNLOAD_MODEL_ATTEMPT_FAILURE);
@@ -887,10 +875,25 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
                         }
                         // If retries are exhausted fail the unload, which is treated as unrecoverable
                         throw e;
+                    }, directExecutor()).transform(umr -> {
+                        if (!first) {
+                            logger.info("Model " + model.modelId + " unloaded successfully following retry");
+                        }
+                        if (fullUnloadRetryRateLimiter.tryAcquire()) {
+                            processUnloadRetryQueue(true);
+                        }
+                        synchronized (model) {
+                            model.unloadFuture = null;
+                            if (model.count == 0) {
+                                // assert model.loadFuture == null
+                                models.remove(model.modelId, model);
+                            }
+                            return Boolean.TRUE;
+                        }
                     }, directExecutor());
         }
 
-        private ListenableFuture<Boolean> enqueueUnloadFailure(ExternalModel model, int failCount) {
+        private ListenableFuture<UnloadModelResponse> enqueueUnloadFailure(ExternalModel model, int failCount) {
             UnloadFailure retryAttempt = new UnloadFailure(model, failCount);
             synchronized (unloadsToRetry) {
                 unloadsToRetry.add(retryAttempt);
@@ -919,7 +922,8 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
             UnloadFailure toRetry;
             boolean processed = false;
             while ((toRetry = unloadsToRetry.poll()) != null) {
-                toRetry.retryFuture.setFuture(attemptUnload(toRetry.model, false, toRetry.count));
+                toRetry.retryFuture.setFuture(Futures.transform(attemptUnload(toRetry.model, false, toRetry.count),
+                    r -> UnloadModelResponse.getDefaultInstance(), directExecutor()));
                 processed = true;
                 if (!all) break;
             }

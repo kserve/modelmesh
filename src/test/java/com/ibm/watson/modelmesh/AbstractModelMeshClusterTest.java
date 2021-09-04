@@ -77,6 +77,10 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
 
     protected abstract int replicaCount();
 
+    protected boolean useDifferentInternalPortForInference() {
+        return false;
+    }
+
     private Closeable[] podClosers;
 
     @BeforeAll
@@ -92,7 +96,8 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
         podClosers = new Closeable[replicaCount()];
         for (int i = 0; i < podClosers.length; i++) {
             podClosers[i] = startModelMeshPod(kvStoreString, replicaSetId, 9000 + i * 4,
-                    extraEnvVars, extraRtEnvVars, extraJvmArgs, extraLlArgs);
+                    extraEnvVars, extraRtEnvVars, extraJvmArgs, extraLlArgs,
+                    useDifferentInternalPortForInference());
         }
         System.out.println("started");
     }
@@ -100,17 +105,19 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
     private static Closeable startModelMeshPod(String kvStoreString,
             String replicaSetId, int port, Map<String, String> extraEnvVars,
             Map<String, String> extraRtEnvVars, List<String> extraJvmArgs,
-            List<String> extraLlArgs) throws Exception {
+            List<String> extraLlArgs, boolean diffInternalInferencePort) throws Exception {
         int externalPort = port;
         int probePort = port + 1;
         int internalPort = port + 2;
+        int internalServePort = diffInternalInferencePort ? port + 3 : internalPort;
         // use port num for replica id for now
         String replicaId = Integer.toString(port);
         ProcessBuilder mmPb = buildMmProcess(clusterServiceName,
                 replicaSetId, replicaId,
-                kvStoreString, externalPort, internalPort, probePort, extraEnvVars,
-                extraJvmArgs, extraLlArgs);
-        ProcessBuilder mrPb = buildExampleRuntimeProcess(internalPort, extraRtEnvVars);
+                kvStoreString, externalPort, internalPort, internalServePort, probePort,
+                extraEnvVars, extraJvmArgs, extraLlArgs);
+        ProcessBuilder mrPb = buildExampleRuntimeProcess(
+            internalPort + "," + internalServePort,  extraRtEnvVars);
         Process mmProc = mmPb.start(), mrProc = mrPb.start();
         startedProcs.add(mmProc);
         startedProcs.add(mrProc);
@@ -188,8 +195,8 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
 
     public static ProcessBuilder buildMmProcess(String serviceName,
             String replicaSetId, String replicaId,
-            String kvStore, int port, int internalPort, int probePort, Map<String, String> extraEnvVars,
-            List<String> extraJvmArgs, List<String> extraLLArgs) {
+            String kvStore, int port, int internalPort, int internalServePort, int probePort,
+            Map<String, String> extraEnvVars, List<String> extraJvmArgs, List<String> extraLLArgs) {
         //TODO configure log4j for started proc to go to stdout
         String instId = serviceName + "-" + replicaSetId + "-" + replicaId;
         List<String> args = new ArrayList<>(Arrays.asList(
@@ -226,6 +233,8 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
                 .put("MM_SCALEUP_RPM_THRESHOLD", "" + 10)
                 .put("LL_TERMINATION_MSG_PATH", tempDir.resolve(instId).toString())
                 .putAll(extraEnvVars)
+                .putAll(internalPort == internalServePort ? Collections.emptyMap()
+                    : Collections.singletonMap("INTERNAL_SERVING_GRPC_PORT", "" + internalServePort))
                 .build();
 
         ProcessBuilder pb = new ProcessBuilder(args)
@@ -237,12 +246,13 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
         return pb;
     }
 
-    public static ProcessBuilder buildExampleRuntimeProcess(int port, Map<String, String> extraRtEnvVars) {
+    public static ProcessBuilder buildExampleRuntimeProcess(String listenOn,
+        Map<String, String> extraRtEnvVars) {
         //TODO configure log4j for started proc to go to stdout
         List<String> args = Arrays.asList(
                 System.getProperty("java.home") + "/bin/java",
                 "-cp", System.getProperty("java.class.path"), "-Xmx96M",
-                ExampleModelRuntime.class.getName(), "" + port);
+                ExampleModelRuntime.class.getName(), listenOn);
         ProcessBuilder pb = new ProcessBuilder(args)
                 .redirectErrorStream(true)
                 .redirectOutput(Redirect.INHERIT);
