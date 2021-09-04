@@ -49,6 +49,11 @@ public class ModelMeshClusterTest extends AbstractModelMeshClusterTest {
         return 3;
     }
 
+    // This should be sufficient to ensure that the model scales out to all 3 instances
+    protected int requestCount() {
+        return 6000;
+    }
+
     @Test
     public void grpcTest() throws Exception {
 
@@ -79,9 +84,8 @@ public class ModelMeshClusterTest extends AbstractModelMeshClusterTest {
             PredictRequest req = PredictRequest.newBuilder().setText("predict me!").build();
 
             System.out.println("Calling predict many times with small payload");
-            // This should be sufficient to ensure that the model scales out to all 3 instances
             long before = System.nanoTime();
-            for (int i = 0; i < 60000; i++) {
+            for (int i = 0; i < requestCount(); i++) {
                 PredictResponse response = forModel(useModels, modelId).predict(req);
                 assertEquals(1.0, response.getResults(0).getConfidence(), 0);
                 assertEquals("classification for predict me! by model myModel",

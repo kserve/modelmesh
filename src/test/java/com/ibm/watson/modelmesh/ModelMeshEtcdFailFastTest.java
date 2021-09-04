@@ -36,8 +36,8 @@ public class ModelMeshEtcdFailFastTest {
         String invalidEtcdServer = "etcd:http://localhost:9999";
 
         ProcessBuilder mmPb = AbstractModelMeshClusterTest.buildMmProcess("fail-fast-test-cluster",
-                replicaSetId, "9012", invalidEtcdServer, 9012, 9014, 9013, Collections.emptyMap(),
-                Collections.emptyList(), Collections.emptyList());
+                replicaSetId, "9012", invalidEtcdServer, 9012, 9014, 9014, 9013,
+                Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
 
         Process mmProc = mmPb.start();
         try {

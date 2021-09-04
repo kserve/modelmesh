@@ -57,6 +57,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.LongAdder;
 
+import static java.lang.Integer.parseInt;
+
 /**
  * An example Model Serving runtime for use with the model-mesh framework
  */
@@ -70,12 +72,13 @@ public class ExampleModelRuntime extends ModelServerImplBase {
 
     private static final LongAdder totalRequestCount = new LongAdder();
 
-    // first command line arg can be either a port number,
+    // first command line arg can be either a port number, two comma-separated port numbers
+    // (in which case the first port will be used for management and second for serving),
     // or of the form "unix://<socket-path>" where <socket-path> is a unix domain socket
 
     public static void main(String[] args) throws Exception {
         String listenOn = args.length > 0 ? args[0] : DEFAULT_PORT;
-        int maxConc = args.length > 1 ? Integer.parseInt(args[1]) : 0;
+        int maxConc = args.length > 1 ? parseInt(args[1]) : 0;
 
         ExampleModelRuntime runtime = new ExampleModelRuntime(listenOn, maxConc);
         runtime.start().awaitTermination();
@@ -83,16 +86,23 @@ public class ExampleModelRuntime extends ModelServerImplBase {
 
     // ----------- startup
 
-    protected final Server server;
+    protected final Server[] servers;
 
     protected final int maxConc;
 
     public ExampleModelRuntime(String listenOn, int maxConc) throws Exception {
         this.maxConc = maxConc;
         System.out.println("ExampleModelRuntime will listen on " + listenOn);
-        server = listenOn.startsWith("unix://")
-                ? buildUdsServer(listenOn.substring(7))
-                : buildIpServer(Integer.parseInt(listenOn));
+        String[] parts = listenOn.split(",");
+        if (parts.length == 2) {
+            servers = buildIpServers(parseInt(parts[0]), parseInt(parts[1]));
+        } else {
+            servers = new Server[] {
+                listenOn.startsWith("unix://")
+                    ? buildUdsServer(listenOn.substring(7))
+                    : buildIpServer(parseInt(listenOn))
+            };
+        }
     }
 
     public ExampleModelRuntime(int port) throws Exception {
@@ -103,17 +113,30 @@ public class ExampleModelRuntime extends ModelServerImplBase {
     public ExampleModelRuntime(int port, int maxConc) {
         this.maxConc = maxConc;
         System.out.println("ExampleModelRuntime will listen on port " + port);
-        server = buildIpServer(port);
+        servers = new Server[] { buildIpServer(port) };
     }
 
     private Server buildIpServer(int port) {
+        return addPredictionService(addManagementService(serverBuilderForPort(port))).build();
+    }
+
+    private Server[] buildIpServers(int managementPort, int servingPort) {
+        if (managementPort == servingPort) return new Server[] { buildIpServer(managementPort) };
+ 
+        return new Server[] {
+            addManagementService(serverBuilderForPort(managementPort)).build(),
+            addPredictionService(serverBuilderForPort(servingPort)).build()
+        };
+    }
+
+    private NettyServerBuilder serverBuilderForPort(int port) {
         NettyServerBuilder builder = NettyServerBuilder.forPort(port);
         if (Epoll.isAvailable()) {
             builder.channelType(EpollServerSocketChannel.class)
                     .bossEventLoopGroup(new EpollEventLoopGroup(1, DAEMON_TFAC))
                     .workerEventLoopGroup(new EpollEventLoopGroup(0, DAEMON_TFAC));
         }
-        return addServices(builder).build();
+        return builder;
     }
 
     private Server buildUdsServer(String socketPath) {
@@ -122,16 +145,20 @@ public class ExampleModelRuntime extends ModelServerImplBase {
                 .channelType(EpollServerDomainSocketChannel.class)
                 .bossEventLoopGroup(new EpollEventLoopGroup(1, DAEMON_TFAC))
                 .workerEventLoopGroup(new EpollEventLoopGroup(0, DAEMON_TFAC));
-        return addServices(builder).build();
+        return addPredictionService(addManagementService(builder)).build();
     }
 
-    private NettyServerBuilder addServices(NettyServerBuilder builder) {
-        return builder.addService(this).addService(ServerInterceptors.intercept(predictor, MODEL_ID_PASSER));
+    private NettyServerBuilder addManagementService(NettyServerBuilder builder) {
+        return builder.addService(this);
+    }
+
+    private NettyServerBuilder addPredictionService(NettyServerBuilder builder) {
+        return builder.addService(ServerInterceptors.intercept(predictor, MODEL_ID_PASSER));
     }
 
     public ExampleModelRuntime start() throws Exception {
         System.out.println("ExampleModelRuntime starting");
-        server.start();
+        for (Server s : servers) s.start();
         Thread.sleep(FAST_MODE ? 1500L : 5_000L); // pretend startup - 5 seconds
         System.out.println("ExampleModelRuntime start complete");
         status = Status.READY;
@@ -179,7 +206,7 @@ public class ExampleModelRuntime extends ModelServerImplBase {
                     MethodInfo.Builder minfo = MethodInfo.newBuilder();
                     if (!parts[1].isBlank()) {
                         for (String n : parts[1].split(",")) {
-                            minfo.addIdInjectionPath(Integer.parseInt(n));
+                            minfo.addIdInjectionPath(parseInt(n));
                         }
                     }
                     rsrBuilder.putMethodInfos(parts[0], minfo.build());
@@ -196,12 +223,12 @@ public class ExampleModelRuntime extends ModelServerImplBase {
     }
 
     public ExampleModelRuntime shutdown() {
-        server.shutdown();
+        for (Server s : servers) s.shutdown();
         return this;
     }
 
     public void awaitTermination() throws InterruptedException {
-        server.awaitTermination();
+        for (Server s : servers) s.awaitTermination();
     }
 
 
@@ -239,7 +266,7 @@ public class ExampleModelRuntime extends ModelServerImplBase {
         // If this is done, the modelSize() API method won't subsequently
         // be called, and need not be implemented.
 
-        //  LoadModelResponse.newBuilder().setSizeInBytes(modelSize).build();
+        // LoadModelResponse lmr = LoadModelResponse.newBuilder().setSizeInBytes(modelSize).build();
 
         LoadModelResponse lmr = LoadModelResponse.getDefaultInstance();
         if (maxConc > 0) {
@@ -261,8 +288,14 @@ public class ExampleModelRuntime extends ModelServerImplBase {
 
         if (model != null) {
             model.unload();
+        } else {
+            // we didn't have the model anyhow - shouldn't happen but no problem
+            if ("true".equals(System.getenv("UNLOAD_RETURN_NOT_FOUND"))) {
+                System.out.println("Returning NOT_FOUND from unload of model " + modelId);
+                response.onError(io.grpc.Status.NOT_FOUND.asRuntimeException());
+                return;
+            }
         }
-        // else we didn't have the model anyhow - shouldn't happen but no problem
 
         System.out.println("Unloading model " + modelId + " complete");
 
