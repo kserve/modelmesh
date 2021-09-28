@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Test recovery behaviour where model runtime unexpectedly returns NOT_FOUND from an inference request
- * (typically because it restartd).
+ * (typically because it restarted).
  */
 public class ModelMeshRefreshMissingModelTest extends AbstractModelMeshClusterTest {
 
@@ -110,7 +110,7 @@ public class ModelMeshRefreshMissingModelTest extends AbstractModelMeshClusterTe
     }
     
     
-    class Timed implements AutoCloseable {
+    static final class Timed implements AutoCloseable {
         final long startTime = nanoTime();
         final String taskName;
 

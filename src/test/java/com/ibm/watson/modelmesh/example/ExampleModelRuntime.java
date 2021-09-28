@@ -80,6 +80,8 @@ public class ExampleModelRuntime extends ModelServerImplBase {
         String listenOn = args.length > 0 ? args[0] : DEFAULT_PORT;
         int maxConc = args.length > 1 ? parseInt(args[1]) : 0;
 
+        System.out.println("ENV: " + System.getenv());
+
         ExampleModelRuntime runtime = new ExampleModelRuntime(listenOn, maxConc);
         runtime.start().awaitTermination();
     }
@@ -405,7 +407,15 @@ public class ExampleModelRuntime extends ModelServerImplBase {
             Model model = loadedModels.get(modelId);
             if (model == null) {
                 // this should happen rarely if ever (e.g. if this container restarts unexpectedly)
-                response.onError(io.grpc.Status.NOT_FOUND.asException());
+                if ("true".equals(System.getenv("TRITON_NOT_FOUND_BEHAVIOUR"))) {
+                    // Simulate Triton bug, see https://github.com/triton-inference-server/server/issues/3399
+                    System.out.println("Responding with Triton-specific \"not found\" error (UNAVAILABLE code)");
+                    response.onError(io.grpc.Status.UNAVAILABLE
+                            .withDescription("Request for unknown model: '" + modelId + "' is not found")
+                            .asRuntimeException());
+                } else {
+                    response.onError(io.grpc.Status.NOT_FOUND.asException());
+                }
                 return null;
             }
 
