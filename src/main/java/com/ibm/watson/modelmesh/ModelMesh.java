@@ -2637,7 +2637,7 @@ public abstract class ModelMesh extends ThriftService
             return String.valueOf(t);
         }
         String description = status.getDescription();
-        if (status.getDescription() == null) {
+        if (description == null) {
             return status.getCode().toString();
         }
         // Don't include "UNKNOWN:" string if there is a corresponding message
