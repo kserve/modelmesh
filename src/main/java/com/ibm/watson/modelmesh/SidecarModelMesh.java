@@ -302,6 +302,15 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
         private ApplierException handleGrpcException(String grpcMethod, Exception e) {
             Status grpcStatus = Status.fromThrowable(e);
             Code code = grpcStatus.getCode();
+            // Triton Inference Server incorrectly returns UNAVAILABLE in the not found case,
+            // See https://github.com/triton-inference-server/server/issues/3399
+            if (code == Code.UNAVAILABLE) {
+                String message = grpcStatus.getDescription();
+                if (message != null && message.startsWith("Request for unknown model") &&
+                    message.endsWith(" is not found") || message.endsWith(" has no available versions")) {
+                    code = Code.NOT_FOUND; // treat as if NOT_FOUND code was returned
+                }
+            }
             if (code == Code.NOT_FOUND) {
                 modelLoader.handleServingNotFound(this);
             } else if (code == Code.UNKNOWN && isInterruption(e)) {
