@@ -4439,7 +4439,10 @@ public abstract class ModelMesh extends ThriftService
             ce.upgradePriority(now + 3600_000L, now + 7200_000L); // (2 hours in future)
         }
 
-        long timeoutMs = loadTimeoutMs; //TODO timeout TBD
+        // The future-waiting timeouts should not be needed, request threads are interrupted when their
+        // timeouts/deadlines expire, and the model loading thread that it waits for has its own timeout.
+        // But we still set a large one as a safeguard (there can be pathalogical cases where model-loading
+        // queues are backed-up).
         Object runtime;
         try {
             if (method != null) {
@@ -4449,9 +4452,10 @@ public abstract class ModelMesh extends ThriftService
                     // log cache miss if this is an invocation request (method!=null)
                     // and the model isn't yet loaded (the load might have been
                     // triggered by this request or a parallel one)
+                    long safeguardTimeoutMillis = loadTimeoutMs * 5;
                     long beforeNanos = nanoTime() - 10_000_000L;
                     try {
-                        runtime = ce.get(timeoutMs - 10L, MILLISECONDS);
+                        runtime = ce.get(safeguardTimeoutMillis, MILLISECONDS);
                     } finally {
                         long delayMillis = msSince(beforeNanos);
                         logger.info("Cache miss for model invocation, held up " + delayMillis + "ms");
@@ -4463,7 +4467,8 @@ public abstract class ModelMesh extends ThriftService
                 // method == null: this is an ensure-loaded or get-status req
                 // so we are only returning status here
                 if (!ce.isDone()) {
-                    ce.get(timeoutMs, MILLISECONDS); // wait for it (ensure-loaded case)
+                    long safeguardTimeoutMillis = loadTimeoutMs * 5;
+                    ce.get(safeguardTimeoutMillis, MILLISECONDS); // wait for it (ensure-loaded case)
                 } else {
                     //TODO TBC about exceptions in ensure/status case
                     Throwable failure = ce.finalException();
@@ -4483,8 +4488,7 @@ public abstract class ModelMesh extends ThriftService
 
             throw newModelLoadException(null, 0L, e);
         } catch (TimeoutException e) {
-            //TODO log here?
-            throw newModelLoadException("Timeout waiting for load of model " + ce.modelId, timeoutMs, e);
+            throw newModelLoadException("Timeout waiting for load of model " + ce.modelId, loadTimeoutMs * 5, e);
         }
 
         // only record invocation if model is actually invoked (i.e. excludes check-status
@@ -5287,6 +5291,9 @@ public abstract class ModelMesh extends ThriftService
     private ModelRecord handleUnexpectedFailedCacheEntry(CacheEntry<?> ce, ModelRecord mr) {
         // If failure has "expired", re-check registry and remove from cache if appropriate
         Throwable failure = ce.finalException();
+        if (failure == null) {
+            return mr; // safeguard timeout case (didn't see load fail but timed out waiting for it)
+        }
         if (failure instanceof ModelLoadException
             && ((ModelLoadException) failure).getTimeout() == KVSTORE_LOAD_FAILURE) {
             long failureAge = currentTimeMillis() - ce.loadCompleteTimestamp;
