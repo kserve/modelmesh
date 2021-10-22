@@ -18,6 +18,10 @@ The following patches are provided in `base/patches` and can be selectively incl
 - `max_msg_size.yaml` - specify a custom max size for incoming gRPC message data and headers
 - `prometheus_metrics.yaml` - turn on [prometheus-based publishing of metrics](https://github.com/kserve/modelmesh/wiki/Metrics)
 
+### Network Policy
+
+The `base` configuration includes a basic Kubernetes [NetworkPolicy](base/networkpolicy.yaml) that specifies standard ingress restrictions based on typical model-mesh inter-pod communication flows. This can be customized for your application as needed (for example changing the main service port from 8033 if you've overridden that modelmesh default), or excluded completely by removing its reference from the base [kustomization.yaml](base/kustomization.yaml).
+
 ### Making a deployment
 
 Install the latest version of `kustomize` as described [here](https://kubectl.docs.kubernetes.io/installation/kustomize/), as well as an appropriate version of `kubectl`. Run for example:
