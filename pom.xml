@@ -58,7 +58,7 @@
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
     <grpc-version>1.41.0</grpc-version>
-    <netty-version>4.1.69.Final</netty-version>
+    <netty-version>4.1.70.Final</netty-version>
     <netty-tcnative-version>2.0.45.Final</netty-tcnative-version>
     <litelinks-version>1.7.1</litelinks-version>
     <kv-utils-version>0.5.0</kv-utils-version>
