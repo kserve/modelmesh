@@ -37,10 +37,8 @@ public abstract class ModelLoader<T> {
     public static final long UNIT_SIZE = 8192; // 8k
 
     private static final String UNLOAD_METHOD_NAME = "unloadModel";
-    private static final String UNLOAD_METHOD_NAME2 = "unloadRuntime";
 
     protected static final ListenableFuture<Boolean> COMPLETED = Futures.immediateFuture(Boolean.TRUE);
-    protected static final ListenableFuture<Void> VOID_COMPLETED = Futures.immediateFuture(null);
 
     private final boolean requiresUnload;
 
@@ -49,12 +47,7 @@ public abstract class ModelLoader<T> {
         try {
             getClass().getDeclaredMethod(UNLOAD_METHOD_NAME, String.class);
             ul = true;
-        } catch (NoSuchMethodException nsme) {
-            try {
-                getClass().getDeclaredMethod(UNLOAD_METHOD_NAME2, String.class);
-                ul = true;
-            } catch (NoSuchMethodException nsme2) { }
-        }
+        } catch (NoSuchMethodException nsme) { }
         requiresUnload = ul;
     }
 
@@ -98,24 +91,10 @@ public abstract class ModelLoader<T> {
      * (i.e. GC only)
      *
      * @param modelId
-     * @deprecated use {@link #unloadModel(String)}
-     */
-    @Deprecated
-    public ListenableFuture<Void> unloadRuntime(String modelId) {
-        return VOID_COMPLETED; // default is no-op
-    }
-
-    /**
-     * Asynchronously unload model with specified id
-     * <p>
-     * This method <b>should not</b> be overridden if no custom unloading logic is required
-     * (i.e. GC only)
-     *
-     * @param modelId
      * @return false if prior load was not performed due to an existing failed load attempt
      */
     public ListenableFuture<Boolean> unloadModel(String modelId) {
-        return Futures.transform(unloadRuntime(modelId), v -> Boolean.TRUE, MoreExecutors.directExecutor());
+        return COMPLETED;
     }
 
     public static class LoadedRuntime<T> {

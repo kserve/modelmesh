@@ -330,10 +330,6 @@ public abstract class ModelMesh extends ThriftService
     // null means no restriction
     private /*final*/ Set<String> acceptedModelTypes;
 
-    // Unit testing system properties
-    public final boolean USE_DUMMY_RUNTIMES = Boolean.getBoolean("tas.use_dummy_runtimes");
-    public final long DUMMY_CAPACITY = Long.getLong("tas.dummy_capacity", Gi);
-
     // optional - only used if external grpc port is set
     private /*final*/ ModelMeshApi grpcServer;
 
@@ -731,8 +727,7 @@ public abstract class ModelMesh extends ThriftService
             dynamicRpmScaleConstant = 600_000L * pct / 100;
         }
 
-        long capacity = USE_DUMMY_RUNTIMES ? DUMMY_CAPACITY : setupMemory(runtimeParams, heap);
-        long capUnits = capacity / UNIT_SIZE;
+        long capacity = setupMemory(runtimeParams, heap), capUnits = capacity / UNIT_SIZE;
         logger.info("Setting model capacity to: " + mb(capacity) + " (" + capUnits + " units)");
 
         runtimeCache = new ConcurrentLinkedHashMap.Builder<String, CacheEntry<?>>()
@@ -743,7 +738,7 @@ public abstract class ModelMesh extends ThriftService
                 .build();
 
         // if explicit model unloading is required, set up the accounting of this
-        // (special placeholder entry in the cache who's weight is adjusted dynamically)
+        // (special placeholder entry in the cache whose weight is adjusted dynamically)
         setupUnloadsAccounting();
 
         // calculate "full" threshold

@@ -58,8 +58,6 @@ public class ModelMeshLoadPriorityTest {
     private static final String serviceType = "DUMMY";
     private static final String modelPath = "output/slad-3";
 
-    public static long DUMMY_CAPACITY;
-
     private final ModelMeshLoadPriorityTest GIVEN = this;
     private final ModelMeshLoadPriorityTest WHEN = this;
     private final ModelMeshLoadPriorityTest THEN = this;
@@ -67,18 +65,11 @@ public class ModelMeshLoadPriorityTest {
 
     @BeforeAll
     public static void initialize() throws Exception {
-        // Use dummies
-        System.setProperty("tas.use_dummy_runtimes", "true");
-
         // otherwise requests will be rejected when we overflow the cache
         System.setProperty("tas.min_churn_age_ms", "1");
 
         // set loading pool to 1 to serialize loads
         System.setProperty("tas.loading_thread_count", "1");
-
-        DUMMY_CAPACITY = Long.getLong("tas.dummy_capacity",
-                8 * DummyClassifierLoader.DEFAULT_MODEL_SIZE
-                * ModelLoader.UNIT_SIZE);
 
         //shared infrastructure
         setupZookeeper();

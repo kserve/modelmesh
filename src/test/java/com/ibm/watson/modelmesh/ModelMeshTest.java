@@ -40,12 +40,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -54,6 +56,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Train-and-serve runtime service unit tests
  */
+@Timeout(value = 10, unit = TimeUnit.SECONDS)
 public class ModelMeshTest {
     // Shared infrastructure
     private static TestingServer localZk;
@@ -224,11 +227,13 @@ public class ModelMeshTest {
 
     private static void createTasCluster() throws InterruptedException, TimeoutException {
         // Create TAS cluster
+        int replicaSetId = ThreadLocalRandom.current().nextInt(1 << 24);
         for (int i = 0; i < 5; i++) {
             System.setProperty(ModelMeshEnvVars.MMESH_METRICS_ENV_VAR, "prometheus:port=" + (2115 + i));
             Service svc = LitelinksService.createService(new ServiceDeploymentConfig(DummyModelMesh.class)
                     .setZkConnString(localZkConnStr).setServiceName(tasRuntimeClusterName)
-                    .setServiceVersion("20170315-1347-2"));
+                    .setServiceVersion("20170315-1347-2")
+                    .setInstanceId(String.format("%06x-%05x", replicaSetId, i + 1)));
             svc.startAsync().awaitRunning();
             services.add(svc);
             System.clearProperty(ModelMeshEnvVars.MMESH_METRICS_ENV_VAR);
@@ -299,16 +304,7 @@ public class ModelMeshTest {
         assertFalse(modelInTasRegistry(modelId, registry));
 
         ModelInfo modelInfo = new ModelInfo(serviceType, modelPath);
-        client.addModel(modelId, modelInfo, true, false);
-        boolean loaded = false;
-        for (int i = 0; i < 20; i++) {
-            if (loaded = Status.LOADED.equals(client.ensureLoaded(modelId, 0, null, false, true).getStatus())) {
-                break;
-            } else {
-                Thread.sleep(1200);
-            }
-        }
-        assertTrue(loaded);
+        assertEquals(Status.LOADED, client.addModel(modelId, modelInfo, true, true).getStatus());
         //log state after model added
         InstanceStateUtil.logModelRegistry(registry);
         InstanceStateUtil.logInstanceInfo(instanceInfo);
@@ -317,7 +313,7 @@ public class ModelMeshTest {
         assertTrue(modelInTasRegistry(modelId, registry));
         assertSingleModelLoaded(instanceInfo);
         client.deleteModel(modelId);
-        Thread.sleep(300);
+        Thread.sleep(200);
         assertFalse(modelInTasRegistry(modelId, registry));
 
         //log state after model deleted
