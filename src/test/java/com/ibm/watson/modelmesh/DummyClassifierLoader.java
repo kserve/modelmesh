@@ -16,6 +16,10 @@
 
 package com.ibm.watson.modelmesh;
 
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningScheduledExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.ibm.watson.modelmesh.DummyModelMesh.DummyModel;
 import com.ibm.watson.modelmesh.thrift.ModelInfo;
 
@@ -23,6 +27,9 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 public class DummyClassifierLoader extends ModelLoader<DummyModel> {
     /* This is something of a hack to allow us to control
@@ -36,18 +43,22 @@ public class DummyClassifierLoader extends ModelLoader<DummyModel> {
      * When modelSize and loadRuntime are called by an
      * instance of DummyClassifierLoader, they will first
      * grab their config map (if it exists) and check for
-     * relevant parameters, defaulting to to the presets
+     * relevant parameters, defaulting to the presets
      * below.
      */
     private static final Map<String, Map<String, String>>
             loaderInstanceConfigMap = new ConcurrentHashMap<>();
 
+    private static final ListeningScheduledExecutorService ses =
+            MoreExecutors.listeningDecorator(Executors.newScheduledThreadPool(4,
+            new ThreadFactoryBuilder().setNameFormat("DummyLoaderUnloadThread-%d").setDaemon(true).build()));
+
     public static final String FORCE_FAIL_KEY = "forceFail"; // default: false
     public static final String LOAD_TIME_KEY = "loadTime";
     public static final String MODEL_SIZE_KEY = "modelSize";
 
-    public static final long DEFAULT_LOAD_TIME = 1_000L;
-    public static final int DEFAULT_MODEL_SIZE = Math.toIntExact(20 * 1024 * 1024 / UNIT_SIZE);
+    public static final long DEFAULT_LOAD_TIME = 200L;
+    public static final int DEFAULT_MODEL_SIZE = Math.toIntExact(20 * 1024 * 1024 / UNIT_SIZE); //20MiB
 
     private String id;
 
@@ -66,6 +77,7 @@ public class DummyClassifierLoader extends ModelLoader<DummyModel> {
 
     @Override
     public int modelSize(DummyModel runtime) {
+        if (runtime.size != 0) return runtime.size;
         // Get config
         Map<String, String> config = loaderInstanceConfigMap.get(id);
         int modelSize = DEFAULT_MODEL_SIZE;
@@ -100,13 +112,19 @@ public class DummyClassifierLoader extends ModelLoader<DummyModel> {
 
         System.out.println("[Loader] Dummy loader about to start loading model " + modelId);
         loaderInstanceConfigMap.get(id);
-        Thread.sleep(loadTime + (long) (200 * Math.random()));
+        Thread.sleep(loadTime + ThreadLocalRandom.current().nextLong(50));
 
         if (forceFail) {
             throw new Exception("[Loader] Dummy loader forced failure for model " + modelId);
         }
+        String ek = modelInfo.getEncKey();
+        int size = 0;
+        if (ek != null && !ek.isEmpty()) {
+            size = Integer.parseInt(ek);
+        }
+
         System.out.println("[Loader] Dummy loader finished loading model " + modelId);
-        return new LoadedRuntime<>(new DummyModel() {
+        return new LoadedRuntime<>(new DummyModel(size) {
             @Override
             public ByteBuffer applyModel(ByteBuffer input, Map<String, String> metadata) throws Exception {
                 return ByteBuffer.wrap(("[Loader] Reply from " + modelId + " in " + id).getBytes());
@@ -129,9 +147,10 @@ public class DummyClassifierLoader extends ModelLoader<DummyModel> {
         loaderInstanceConfigMap.put(id, config);
     }
 
-//    @Override
-//    public ListenableFuture<Void> unloadRuntime(String modelId) {
-//        System.out.println("unloading called for "+modelId);
-//        return super.unloadRuntime(modelId);
-//    }
+    @Override
+    public ListenableFuture<Boolean> unloadModel(String modelId) {
+        // simulate unload
+        return ses.schedule(() -> Boolean.TRUE, 80L, TimeUnit.MILLISECONDS);
+    }
+
 }

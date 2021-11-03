@@ -34,6 +34,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.File;
 import java.io.IOException;
@@ -41,14 +42,16 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Train-and-serve runtime service unit test - ungraceful shutdown
  */
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 public class ModelMeshZkFailTest {
     // Shared infrastructure
     private static TestingServer localZk;
@@ -156,20 +159,10 @@ public class ModelMeshZkFailTest {
     // utility methods
     private List<String> loadModels(int num) throws TException, InterruptedException {
         List<String> modelIds = new ArrayList<>();
+        ModelInfo modelInfo = new ModelInfo(serviceType, modelPath);
         for (int m = 0; m < num; m++) {
             String modelId = getNextModelId();
-            ModelInfo modelInfo = new ModelInfo(serviceType, modelPath);
-            clusterClient.addModel(modelId, modelInfo, true, false);
-            boolean loaded = false;
-            for (int i = 0; i < 20; i++) {
-                if (loaded =
-                        Status.LOADED.equals(clusterClient.ensureLoaded(modelId, 0, null, false, true).getStatus())) {
-                    break;
-                } else {
-                    Thread.sleep(1200);
-                }
-            }
-            assertTrue(loaded);
+            assertEquals(Status.LOADED, clusterClient.addModel(modelId, modelInfo, true, true).getStatus());
             modelIds.add(modelId);
         }
         return modelIds;
@@ -221,12 +214,14 @@ public class ModelMeshZkFailTest {
 
     private static void createTasCluster() throws InterruptedException, TimeoutException, IOException {
         // Create TAS cluster
+        int replicaSetId = ThreadLocalRandom.current().nextInt(1 << 24);
         for (int i = 0; i < 3; i++) {
             System.setProperty(ModelMeshEnvVars.MMESH_METRICS_ENV_VAR, "prometheus:port=" + (2115 + i));
             Service svc =
                     LitelinksService.createService(new LitelinksService.ServiceDeploymentConfig(DummyModelMesh.class)
                             .setZkConnString(localZkConnStr).setServiceName(tasRuntimeClusterName)
-                            .setServiceVersion("20170315-1347-2"));
+                            .setServiceVersion("20170315-1347-2")
+                            .setInstanceId(String.format("%06x-%05x", replicaSetId, i + 1)));
             svc.startAsync().awaitRunning();
             serviceCluster.add(svc);
             System.clearProperty(ModelMeshEnvVars.MMESH_METRICS_ENV_VAR);

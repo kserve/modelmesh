@@ -26,6 +26,7 @@ import com.ibm.watson.litelinks.client.LitelinksServiceClient;
 import com.ibm.watson.litelinks.client.LitelinksServiceClient.ServiceInstanceInfo;
 import com.ibm.watson.litelinks.client.ThriftClientBuilder;
 import com.ibm.watson.litelinks.server.LitelinksService;
+import com.ibm.watson.litelinks.server.WatchedService;
 import com.ibm.watson.modelmesh.thrift.LegacyModelMeshService;
 import com.ibm.watson.modelmesh.thrift.ModelInfo;
 import com.ibm.watson.modelmesh.thrift.Status;
@@ -41,20 +42,25 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Train-and-serve runtime service unit tests - Load Failure
  */
+@Timeout(value = 25, unit = TimeUnit.SECONDS)
 public class ModelMeshLoadFailureTest {
     // Shared infrastructure
     private static TestingServer localZk;
@@ -233,7 +239,7 @@ public class ModelMeshLoadFailureTest {
 
         //ask shutdown of a service
         int numOfServicesToShutdown = 3;
-        stopSomeServices(clusterClient, clusterRegistry, clusterInstanceInfo, numOfServicesToShutdown);
+        stopSomeServices(numOfServicesToShutdown);
         System.out.println("[Client] Some services were asked to shutdown");
 
         Thread.sleep(3000);
@@ -346,6 +352,8 @@ public class ModelMeshLoadFailureTest {
     private static ZookeeperKVTable clusterInstanceTable;
     private static TableView<InstanceRecord> clusterInstanceInfo;
 
+    private static final int replicaSetId = ThreadLocalRandom.current().nextInt(1 << 24);
+
     private static void createTasCluster() throws InterruptedException, TimeoutException {
         // Create TAS cluster
         for (int i = 0; i < clusterSize; i++) {
@@ -353,7 +361,8 @@ public class ModelMeshLoadFailureTest {
             Service svc =
                     LitelinksService.createService(new LitelinksService.ServiceDeploymentConfig(DummyModelMesh.class)
                             .setZkConnString(localZkConnStr).setServiceName(tasRuntimeClusterName)
-                            .setServiceVersion("20170315-1347-2"));
+                            .setServiceVersion("20170315-1347-2")
+                            .setInstanceId(String.format("%06x-%05x", replicaSetId, i + 1)));
             svc.startAsync().awaitRunning();
             serviceCluster.add(svc);
             System.clearProperty(ModelMeshEnvVars.MMESH_METRICS_ENV_VAR);
@@ -507,16 +516,7 @@ public class ModelMeshLoadFailureTest {
 
         //load models
         for (String modelId : modelIds) {
-            client.addModel(modelId, modelInfo, true, false);
-            boolean loaded = false;
-            for (int i = 0; i < 20; i++) {
-                if (loaded = Status.LOADED.equals(client.ensureLoaded(modelId, 0, null, false, true).getStatus())) {
-                    break;
-                } else {
-                    Thread.sleep(1200);
-                }
-            }
-            assertTrue(loaded);
+            assertEquals(Status.LOADED, client.addModel(modelId, modelInfo, true, true).getStatus());
 
             //log state after each model added
             InstanceStateUtil.logModelRegistry(registry);
@@ -543,16 +543,7 @@ public class ModelMeshLoadFailureTest {
 
         //load models
         for (String modelId : modelIds) {
-            client.addModel(modelId, modelInfo, true, false);
-            boolean loaded = false;
-            for (int i = 0; i < 20; i++) {
-                if (loaded = Status.LOADED.equals(client.ensureLoaded(modelId, 0, null, false, true).getStatus())) {
-                    break;
-                } else {
-                    Thread.sleep(1200);
-                }
-            }
-            assertTrue(loaded);
+            assertEquals(Status.LOADED, client.addModel(modelId, modelInfo, true, true).getStatus());
 
             //log state after each model added
             InstanceStateUtil.logModelRegistry(registry);
@@ -631,7 +622,7 @@ public class ModelMeshLoadFailureTest {
         return false;
     }
 
-    private void resizeServiceCluster(int newClusterSize) {
+    private static void resizeServiceCluster(int newClusterSize) throws InterruptedException {
 
         //in case of expansion
         while (serviceCluster.size() < newClusterSize) {
@@ -641,7 +632,8 @@ public class ModelMeshLoadFailureTest {
             Service svc =
                     LitelinksService.createService(new LitelinksService.ServiceDeploymentConfig(DummyModelMesh.class)
                             .setZkConnString(localZkConnStr).setServiceName(tasRuntimeClusterName)
-                            .setServiceVersion("20170315-1347-2"));
+                            .setServiceVersion("20170315-1347-2")
+                            .setInstanceId(String.format("%06x-%05x", replicaSetId, serviceCluster.size() + 1)));
             svc.startAsync().awaitRunning();
             serviceCluster.add(svc);
             System.clearProperty(ModelMeshEnvVars.MMESH_METRICS_ENV_VAR);
@@ -653,11 +645,11 @@ public class ModelMeshLoadFailureTest {
                                newClusterSize + ")  --> Resizing..");
             int numOfServicesToStop = serviceCluster.size() - newClusterSize;
             int servicesStopped = 0;
-            for (Iterator<Service> iterator = serviceCluster.iterator(); iterator.hasNext(); ) {
+            for (ListIterator<Service> iterator = serviceCluster.listIterator(serviceCluster.size()); iterator.hasPrevious(); ) {
                 if (servicesStopped >= numOfServicesToStop) {
                     break;
                 }
-                Service service = iterator.next();
+                Service service = iterator.previous();
                 service.stopAsync().awaitTerminated();
                 servicesStopped++;
                 iterator.remove();
@@ -665,6 +657,8 @@ public class ModelMeshLoadFailureTest {
         }
 
         System.out.println("[Client] Final ClusterSize:" + clusterSize);
+        System.out.println("[Client] Final ClusterServices:" + serviceCluster.stream().map(
+            s -> ((WatchedService) s).getInstanceId()).collect(Collectors.joining(",")));
     }
 
     private synchronized List<String> generateModelIds(int modelLoadCount) {
@@ -675,14 +669,13 @@ public class ModelMeshLoadFailureTest {
         return modelIds;
     }
 
-    private void stopSomeServices(LegacyModelMeshService.Iface client, TableView<ModelRecord> registry,
-            TableView<InstanceRecord> instanceInfo, int numOfServicesToStop) {
+    private void stopSomeServices(int numOfServicesToStop) {
         int servicesStopped = 0;
-        for (Iterator<Service> iterator = serviceCluster.iterator(); iterator.hasNext(); ) {
+        for (ListIterator<Service> iterator = serviceCluster.listIterator(serviceCluster.size()); iterator.hasPrevious(); ) {
             if (servicesStopped >= numOfServicesToStop) {
                 break;
             }
-            Service service = iterator.next();
+            Service service = iterator.previous();
             service.stopAsync().awaitTerminated();
             servicesStopped++;
             iterator.remove();

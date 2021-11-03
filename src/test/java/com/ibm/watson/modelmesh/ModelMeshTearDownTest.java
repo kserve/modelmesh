@@ -37,6 +37,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.File;
 import java.io.IOException;
@@ -52,11 +53,13 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Train-and-serve runtime service unit test - ungraceful shutdown
  */
+@Timeout(value = 50, unit = TimeUnit.SECONDS)
 public class ModelMeshTearDownTest {
     // Shared infrastructure
     private static TestingServer localZk;
@@ -126,14 +129,8 @@ public class ModelMeshTearDownTest {
         InstanceStateUtil.logInstanceInfo(clusterInstanceInfo);
 
         // Wait for all to be loaded, max of 20 seconds
-        boolean allLoaded = false;
-        for (int i = 0; !allLoaded && i < 20; i++) {
-            Thread.sleep(250);
-            allLoaded = true;
-            for (String modelId : modelIds) {
-                allLoaded = allLoaded &&
-                            Status.LOADED == clusterClient.addModel(modelId, modelInfo, true, false).getStatus();
-            }
+        for (String modelId : modelIds) {
+            assertEquals(Status.LOADED, clusterClient.addModel(modelId, modelInfo, true, true).getStatus());
         }
 
         System.out.println("Models loaded across " + clusterSize + " instances");

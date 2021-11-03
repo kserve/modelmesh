@@ -36,7 +36,14 @@ public class DummyModelMesh extends ModelMesh implements LegacyModelMeshService.
 
     public static final String DUMMY = "DUMMY";
 
+    public static final long DUMMY_CAPACITY = 10 * DummyClassifierLoader.DEFAULT_MODEL_SIZE * ModelLoader.UNIT_SIZE;
+
     public static class DummyModel {
+        int size;
+        DummyModel(int size) {
+            this.size = size;
+        }
+    
         public ByteBuffer applyModel(ByteBuffer input, Map<String, String> metadata) throws Exception {
             return ByteBuffer.wrap(new byte[5]);
         }
@@ -53,7 +60,7 @@ public class DummyModelMesh extends ModelMesh implements LegacyModelMeshService.
         dummyLoader = new DummyClassifierLoader();
         ((DummyClassifierLoader) dummyLoader).setId(instanceId);
         return new LocalInstanceParameters(DummyClassifierLoader.DEFAULT_MODEL_SIZE)
-                .acceptedModelTypes(DUMMY);
+                .useNonHeap(DUMMY_CAPACITY).acceptedModelTypes(DUMMY);
     }
 
     @Override

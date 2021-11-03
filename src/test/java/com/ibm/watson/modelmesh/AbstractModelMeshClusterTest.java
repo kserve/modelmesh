@@ -179,11 +179,11 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
             File terminationMsgFile = new File(
                     origBuilder.environment().getOrDefault("LL_TERMINATION_MSG_PATH", ""));
             // Wait up to 5 sec for file to be properly written
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 10; i++) {
                 if (terminationMsgFile.exists()) {
                     return Files.readString(terminationMsgFile.toPath());
                 }
-                Thread.sleep(1000);
+                Thread.sleep(500);
             }
             return "File " + terminationMsgFile + " does not exist";
         } catch (Exception e) {
