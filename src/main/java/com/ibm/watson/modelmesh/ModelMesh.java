@@ -38,7 +38,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListenableFutureTask;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
-import com.google.common.util.concurrent.Runnables;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.googlecode.concurrentlinkedhashmap.Weigher;
@@ -100,7 +99,6 @@ import org.eclipse.collections.api.map.primitive.ObjectLongMap;
 import org.eclipse.collections.impl.factory.primitive.ObjectLongMaps;
 import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
 
-import javax.annotation.concurrent.GuardedBy;
 import java.io.File;
 import java.io.InterruptedIOException;
 import java.lang.management.ManagementFactory;
@@ -376,7 +374,9 @@ public abstract class ModelMesh extends ThriftService
 
     private final JsonSerializer<InstanceRecord> INST_REC_SERIALIZER = new JsonSerializer<>(InstanceRecord.class);
 
-    protected /*final*/ ConcurrentLinkedHashMap<String, CacheEntry<?>> runtimeCache;
+    private /*final*/ ConcurrentLinkedHashMap<String, CacheEntry<?>> runtimeCache;
+
+    private /*final*/ ModelCacheUnloadBufManager unloadManager;
 
     // For instance-instance communications
     // The different clients have different routers but share underlying conn pool etc
@@ -728,8 +728,7 @@ public abstract class ModelMesh extends ThriftService
         }
 
         long capacity = setupMemory(runtimeParams, heap), capUnits = capacity / UNIT_SIZE;
-        logger.info("Setting model capacity to: " + mb(capacity) + " (" + capUnits + " units)");
-
+        long effectiveCapUnits = capUnits;
         runtimeCache = new ConcurrentLinkedHashMap.Builder<String, CacheEntry<?>>()
                 .concurrencyLevel(2)
                 .initialCapacity(64)
@@ -739,11 +738,27 @@ public abstract class ModelMesh extends ThriftService
 
         // if explicit model unloading is required, set up the accounting of this
         // (special placeholder entry in the cache whose weight is adjusted dynamically)
-        setupUnloadsAccounting();
+        if (loader.requiresUnload()) {
+            // reserve part of the cache for unloads to prevent cascading evictions
+            int lowerBound = Math.toIntExact(runtimeCache.capacity() / 100);
+            int upperBound = Math.toIntExact(runtimeCache.capacity() / 10);
+            int unitsToReserve = loadingThreads * defaultModelSizeUnits / (loadingThreads <= 2 ? 2 : 4);
+
+            int unloadsReservedSizeUnits = Math.max(Math.min(unitsToReserve, upperBound), lowerBound);
+            unloadManager = new ModelCacheUnloadBufManager(this, runtimeCache, unloadsReservedSizeUnits);
+            effectiveCapUnits -= unloadsReservedSizeUnits;
+            logger.info("Explicit unloading ENABLED, reserved cache space = " + unloadsReservedSizeUnits
+                        + " units (" + mb(unloadsReservedSizeUnits * UNIT_SIZE, "MiB") + ")");
+        } else {
+            logger.info("Explicit unloading DISABLED");
+        }
+        logger.info("Total model capacity is " + mb(capacity) + " (" + capUnits + " units)");
+        logger.info("Effective model capacity is " + mb(effectiveCapUnits * UNIT_SIZE)
+            + " (" + effectiveCapUnits + " units)");
 
         // calculate "full" threshold
         //TODO this should probably be made more dynamic and/or model-type/situation specific
-        int min = defaultModelSizeUnits * (UNLOAD_BUFF != null || loadingThreads <= 1 ? 1 : 2);
+        int min = defaultModelSizeUnits * (unloadManager != null || loadingThreads <= 1 ? 1 : 2);
         int target = Math.min(defaultModelSizeUnits * loadingThreads, (int) (capUnits / 20));
         minSpaceUnits = Math.max(min, target);
         logger.info("Instance considered full if available space < " + minSpaceUnits + " units ("
@@ -1559,74 +1574,18 @@ public abstract class ModelMesh extends ThriftService
         }
     }
 
-    /* ----------------------------- model unloading bookeeping ---------------------------------------------------*/
-
-    private static final String UNLOAD_BUFFER_CACHE_KEY = "___UNLOADBUF";
-
-    // the "permanent" cache entry used as a placeholder for
-    // mem taken by in-progress model unloadings (which are
-    // otherwise removed from the cache).
-    // null => explicit unloading isn't enabled
-    private /*final*/ CacheEntry<?> UNLOAD_BUFF;
-
-    // amount of space in the cache to reserve for unloads
-    private /*final*/ int unloadsReservedSizeUnits;
-    // this is incremented/decremented based on unloading activity
-    // *only* from within UNLOAD_BUFF object monitor (lock)
-    private int totalUnloadingWeight;
-
-    // The amount of space occupied by the unload buffer cache entry
-    // at a given time is max(unloadsReservedSizeUnits, totalUnloadingWeight).
-    // Note that totalUnloadingWeight can go negative since unloading
-    // budget is also "borrowed" temporarily during model loading
-    // to avoid cascading evictions
-
-    // Total weighted cache size of loaded models excluding the unload buffer.
-    // It basically tracks (runtimeCache.weightedSize() - UNLOAD_BUFF.getWeight()),
-    // but is always accessed from within UNLOAD_BUFF object monitor (lock)
-    // in concert with totalUnloadingWeight updates
-    private long totalModelCacheOccupancy;
-
-    // called from initialize() method, after subclass initialization
-    private void setupUnloadsAccounting() {
-        if (loader.requiresUnload()) {
-            // reserve part of the cache for unloads to prevent cascading evictions
-            int lowerBound = Math.toIntExact(runtimeCache.capacity() / 100);
-            int upperBound = Math.toIntExact(runtimeCache.capacity() / 10);
-            int unitsToReserve = loadingThreads * defaultModelSizeUnits / (loadingThreads <= 2 ? 2 : 4);
-            unloadsReservedSizeUnits = Math.max(Math.min(unitsToReserve, upperBound), lowerBound);
-            UNLOAD_BUFF = new CacheEntry<>(UNLOAD_BUFFER_CACHE_KEY, unloadsReservedSizeUnits);
-            // timestamp is set to max long value so this will never be evicted
-            runtimeCache.putIfAbsent(UNLOAD_BUFFER_CACHE_KEY, UNLOAD_BUFF, Long.MAX_VALUE);
-            logger.info("Explicit unloading ENABLED, reserved cache space = " + unloadsReservedSizeUnits
-                        + " units (" + mb(unloadsReservedSizeUnits * UNIT_SIZE, "MiB") + ")");
-        } else {
-            logger.info("Explicit unloading DISABLED");
-        }
-    }
-
-    @GuardedBy("UNLOAD_BUFF")
-    private void adjustAggregateUnloadingWeight(int delta) {
-        if (delta == 0) return;
-        int newWeight = totalUnloadingWeight += delta;
-        //TODO if new weight is bigger than X% of cache size,
-        //  go into preservation mode [block new loads], + probably
-        //  do controlled self-termination
-        newWeight = Math.max(newWeight, unloadsReservedSizeUnits);
-        if (newWeight > unloadsReservedSizeUnits) {
-            int cap = (int) Math.min(runtimeCache.capacity(), Integer.MAX_VALUE);
-            if (cap < newWeight) {
-                newWeight = cap; // pathological case
-            }
-        }
-        UNLOAD_BUFF.updateWeight(newWeight);
-    }
-
     /* --------------------------------- local cache entry ------------------------------------------------------ */
 
     @SuppressWarnings("rawtypes")
     static final AtomicLongFieldUpdater<CacheEntry> LAST_2ND_COPY_TIME_UPDATER = AtomicLongFieldUpdater
             .newUpdater(CacheEntry.class, "lastSecondCopyTriggerNanos");
+
+    final CacheEntry<?> newInternalCacheEntry(String id, int weight) {
+        CacheEntry<?> ce = new CacheEntry(id, weight);
+        // timestamp is set to max long value so this will never be evicted
+        runtimeCache.putIfAbsent(id, ce, Long.MAX_VALUE);
+        return ce;
+    }
 
     /**
      * This class holds a model in the cache. It also contains the logic
@@ -1680,7 +1639,7 @@ public abstract class ModelMesh extends ThriftService
 
         // overridden to return false in MaxConcCacheEntry
         protected boolean recordInvokeCompletions() {
-            return UNLOAD_BUFF != null;
+            return unloadManager != null;
         }
 
         final String modelType() {
@@ -1771,7 +1730,7 @@ public abstract class ModelMesh extends ThriftService
          * @param newWeight >0 means strong prediction,
          *                  absolute value of <0 means weak prediction
          */
-        private void updateWeight(int newWeight) {
+        void updateWeight(int newWeight) {
             //TODO maybe ensure != 0
             this.weight = newWeight;
             runtimeCache.replaceQuietly(modelId, this, this);
@@ -1921,13 +1880,9 @@ public abstract class ModelMesh extends ThriftService
                         lfut.cancel(true);
                     }
                 }
-                if (UNLOAD_BUFF != null) {
-                    if (stateNow == QUEUED || stateNow == WAITING) {
-                        synchronized (UNLOAD_BUFF) {
-                            int absWeight = getWeight();
-                            totalModelCacheOccupancy -= absWeight;
-                            adjustAggregateUnloadingWeight(absWeight);
-                        }
+                if (unloadManager != null) {
+                    if (stateNow == NEW || stateNow == QUEUED || stateNow == WAITING) {
+                        unloadManager.cancelSpaceRequestForNewEntry(this);
                     } else if (stateNow == LOADING) {
                         // this delay is to add a buffer between
                         // cancelling the in-progress load and
@@ -1946,7 +1901,7 @@ public abstract class ModelMesh extends ThriftService
                     }
                 }
 
-                if (UNLOAD_BUFF != null) {
+                if (unloadManager != null) {
                     // Wait 200ms prior to initial check, to avoid race with incoming requests hitting.
                     // This still constitutes a race but the alternative is additional volatile checks
                     // on the 99.99% runtime path which we prefer to avoid.
@@ -1963,11 +1918,8 @@ public abstract class ModelMesh extends ThriftService
                 }
             }
             // else will already have been unloaded
-            else if (state == FAILED && UNLOAD_BUFF != null) {
-                synchronized (UNLOAD_BUFF) {
-                    totalModelCacheOccupancy -= FAILED_WEIGHT;
-                    UNLOAD_BUFF.notifyAll();
-                }
+            else if (state == FAILED && unloadManager != null) {
+                unloadManager.discardFailedEntry(FAILED_WEIGHT);
             }
 
             if (unloadDelayMs >= 0L && !isShuttingDown) {
@@ -1985,13 +1937,10 @@ public abstract class ModelMesh extends ThriftService
          *                       are any remaining inflight requests for the model
          */
         private void triggerUnload(int weight, long initialDelayMs) {
-            if (UNLOAD_BUFF == null) {
+            if (unloadManager == null) {
                 return;
             }
-            synchronized (UNLOAD_BUFF) {
-                totalModelCacheOccupancy -= weight;
-                adjustAggregateUnloadingWeight(weight);
-            }
+            unloadManager.initiateUnload(weight);
             long startNanos = nanoTime();
             if (initialDelayMs == 0L) {
                 unloadIfIdle(weight, 1, startNanos);
@@ -2029,10 +1978,7 @@ public abstract class ModelMesh extends ThriftService
             Futures.addCallback(loader.unloadModel(modelId), new FutureCallback<>() {
                 @Override
                 public void onSuccess(Boolean reallyHappened) {
-                    synchronized (UNLOAD_BUFF) {
-                        adjustAggregateUnloadingWeight(-weight);
-                        UNLOAD_BUFF.notifyAll();
-                    }
+                    unloadManager.unloadComplete(weight, true, modelId);
                     // This should never be null, but guarding just in case
                     if (reallyHappened == null || reallyHappened) {
                         //TODO probably only log if took longer than a certain time
@@ -2052,18 +1998,8 @@ public abstract class ModelMesh extends ThriftService
                     }
                     logger.error("Unload failed for model " + modelId + " type=" + modelInfo.getServiceType()
                                  + " after " + msSince(beforeNanos) + "ms", throwable);
-                    long capacity, newCapacity;
-                    synchronized (UNLOAD_BUFF) {
-                        capacity = runtimeCache.capacity();
-                        newCapacity = Math.max(1L, capacity - weight);
-                        adjustAggregateUnloadingWeight(-weight);
-                        runtimeCache.setCapacity(newCapacity);
-                        UNLOAD_BUFF.notifyAll();
-                    }
+                    unloadManager.unloadComplete(weight, false, modelId);
                     metrics.logCounterMetric(Metric.UNLOAD_MODEL_FAILURE);
-                    logger.warn("Failed unload of model " + modelId + " resulted in permanent capacity reduction of "
-                                + weight + " units (" + mb(weight * UNIT_SIZE) + ") from " + capacity + " to "
-                                + newCapacity);
                 }
             }, directExecutor());
         }
@@ -2086,29 +2022,15 @@ public abstract class ModelMesh extends ThriftService
 
             // inflate from INSERTION_WEIGHT to initial (predicted size)
             final int absWeight = Math.abs(initialWeight);
-            if (UNLOAD_BUFF != null) {
-                synchronized (UNLOAD_BUFF) {
-                    // Reduce unload buffer allocation temporarily to prevent
-                    // cascading evictions. We block-wait until there is
-                    // cache space to increase this again (as unloads complete)
-                    // prior to the load actually starting
-                    totalModelCacheOccupancy += absWeight;
-                    adjustAggregateUnloadingWeight(-absWeight);
-                    updateWeight(initialWeight);
-                }
+            if (unloadManager != null) {
+                int increase = absWeight - getWeight();
+                unloadManager.adjustNewEntrySpaceRequest(increase, this, initialWeight < 0);
             } else {
                 updateWeight(initialWeight);
             }
             // check whether we were evicted when growing
             if (runtimeCache.getQuietly(modelId) != this) {
                 logCacheFallthru(modelId, lastUsed, currentTimeMillis(), runtimeCache.oldestTime(), absWeight);
-                // we must revert the unloadbuf weight adjustment here since it
-                // won't have been done in remove() because we're not yet
-                // in QUEUED state
-                if (UNLOAD_BUFF != null) {
-                    totalModelCacheOccupancy -= absWeight;
-                    adjustAggregateUnloadingWeight(absWeight);
-                }
                 return false;
             }
 
@@ -2149,16 +2071,6 @@ public abstract class ModelMesh extends ThriftService
         // - it covers the future task in which both of these are done
         private volatile ListenableFuture<Void> loadFuture;
 
-        @GuardedBy("UNLOAD_BUFF")
-        private boolean cacheSpaceIsReadyToLoad(int required) {
-            int newTuw = totalUnloadingWeight + required;
-            if (newTuw <= unloadsReservedSizeUnits) {
-                return true;
-            }
-            long totalRequired = newTuw + totalModelCacheOccupancy;
-            return totalRequired <= runtimeCache.capacity();
-        }
-
         @Override
         public final void run() {
             boolean decrementLoadingCount = false;
@@ -2188,7 +2100,7 @@ public abstract class ModelMesh extends ThriftService
                         }
                     }
 
-                    absWeight = Math.abs(weight);
+                    absWeight = getWeight();
                     if (weight < 0) {
                         // if weight was a prediction based on existing average,
                         // increase it prior to actually loading
@@ -2202,12 +2114,9 @@ public abstract class ModelMesh extends ThriftService
                                         "Predicted size of " + gb(loaderPredictedWeight * UNIT_SIZE)
                                         + " for model " + modelId + " is larger than total" + " effective capacity of "
                                         + gb(capacity * UNIT_SIZE), instanceId, 0L, null);
-                            } else if (UNLOAD_BUFF != null) {
-                                synchronized (UNLOAD_BUFF) {
-                                    totalModelCacheOccupancy += increase;
-                                    adjustAggregateUnloadingWeight(-increase);
-                                    updateWeight(absWeight = loaderPredictedWeight);
-                                }
+                            } else if (unloadManager != null) {
+                                unloadManager.adjustNewEntrySpaceRequest(increase, this, false);
+                                absWeight = loaderPredictedWeight;
                             } else {
                                 updateWeight(absWeight = loaderPredictedWeight);
                             }
@@ -2216,7 +2125,7 @@ public abstract class ModelMesh extends ThriftService
                     if (preSizingError != null) {
                         setFailed(preSizingError);
                     } else {
-                        state = UNLOAD_BUFF == null ? LOADING : WAITING;
+                        state = unloadManager == null ? LOADING : WAITING;
                     }
                 }
                 if (preSizingError != null) {
@@ -2235,7 +2144,7 @@ public abstract class ModelMesh extends ThriftService
                     Throwable failure = null;
                     final String modelType = modelInfo.getServiceType();
                     try {
-                        if (UNLOAD_BUFF != null) {
+                        if (unloadManager != null) {
                             // this block-waits until there is available cache space to
                             // expand into, and moves the state from WAITING to LOADING
                             waitForSpaceToLoad(targetWeight);
@@ -2291,46 +2200,33 @@ public abstract class ModelMesh extends ThriftService
         }
 
         private void waitForSpaceToLoad(int required) throws Exception {
-            //assert UNLOAD_BUFF != null;
+            //assert unloadManager != null;
             // here state == WAITING; we wait if necessary for cache space to become available
             //  -- specifically that we can add back our prior subtraction from the aggregate
             // unloading weight without causing any further cache eviction
-            long beforeWaitNanos = nanoTime(), timeoutMs = 180_000L; // 3 mins TODO TBC
+            final long beforeWaitNanos = nanoTime(), deadlineNanos = beforeWaitNanos + MINUTES.toNanos(3L); //TODO TBC
             try {
                 while (true) {
-                    synchronized (UNLOAD_BUFF) {
-                        //TODO may need to change this to grab space incrementally, otherwise
-                        // load of large model could be held up indefinitely by loads of smaller ones
-                        while (state == WAITING && !cacheSpaceIsReadyToLoad(required)) {
-                            long toWaitMs = timeoutMs - ((nanoTime() - beforeWaitNanos) / 1000_000L);
-                            if (toWaitMs <= 0) {
-                                throw noStack(new TimeoutException("Model " + modelId + " spent > 3mins"
+                    //TODO may need to change this to grab space incrementally, otherwise
+                    // load of large model could be held up indefinitely by loads of smaller ones
+                    boolean timeout = !unloadManager.waitForSpaceToLoad(required, () -> state != WAITING, deadlineNanos);
+                    if (timeout) {
+                        throw noStack(new TimeoutException("Model " + modelId + " spent > 3mins"
                                         + " pre-load waiting for space to become available"));
-                            }
-                            UNLOAD_BUFF.wait(toWaitMs); // throws InterruptedException
-                        }
                     }
-                    // Ensure evictions triggered from prior weight adjustments
-                    // have been processed, so that we properly account for the
-                    // increased unload buffer weight in waitForSpaceToLoad()
-                    evictionTaskThread.submit(Runnables.doNothing()).get();
                     synchronized (CacheEntry.this) {
                         if (state != WAITING) {
                             throw new Exception("State of model " + modelId + " changed to " + stateString()
                                                 + " during pre-load waiting, aborting load");
                         }
-                        synchronized (UNLOAD_BUFF) {
-                            if (!cacheSpaceIsReadyToLoad(required)) {
-                                continue;
-                            }
-                            adjustAggregateUnloadingWeight(required);
+                        if (unloadManager.claimRequestedSpaceIfReady(required)) {
+                            state = LOADING;
+                            break;
                         }
-                        state = LOADING;
                     }
-                    break;
                 }
             } finally {
-                long waitedTimeMillis = (nanoTime() - beforeWaitNanos) / 1000_000L;
+                long waitedTimeMillis = NANOSECONDS.toMillis(nanoTime() - beforeWaitNanos);
                 if (waitedTimeMillis > 20) {
                     logger.info("Load of model " + modelId + " waited " + waitedTimeMillis
                                 + "ms for cache space to become free");
@@ -2387,7 +2283,7 @@ public abstract class ModelMesh extends ThriftService
                         error = new NullPointerException("Loader returned null runtime");
                     }
                     if (error != null) {
-                        if (UNLOAD_BUFF != null && state == WAITING) {
+                        if (unloadManager != null && state == WAITING) {
                             if (!isDone()) {
                                 // this won't leave a failure registration unlike loading failures
                                 logger.warn("Model " + modelId + " pre-load aborted "
@@ -2455,14 +2351,8 @@ public abstract class ModelMesh extends ThriftService
                         int weightBefore = getWeight(), sizedWeight = Math.max(size, 1);
                         int delta = sizedWeight - weightBefore;
                         if (delta != 0) {
-                            if (UNLOAD_BUFF != null) {
-                                synchronized (UNLOAD_BUFF) {
-                                    totalModelCacheOccupancy += delta;
-                                    updateWeight(sizedWeight);
-                                    if (delta < 0) {
-                                        UNLOAD_BUFF.notifyAll();
-                                    }
-                                }
+                            if (unloadManager != null) {
+                                unloadManager.adjustWeightAfterLoad(delta, this);
                             }
                             // update instance record (e.g. maybe went from not-full -> full)
                             publishInstanceRecordAsync();
@@ -3719,8 +3609,10 @@ public abstract class ModelMesh extends ThriftService
                                             ModelLoadException mle = newModelLoadException(
                                                     "KV store error attempting to prune model record: " + e,
                                                     KVSTORE_LOAD_FAILURE, e);
-                                            cacheEntry = runtimeCache.putIfAbsent(modelId,
-                                                    new CacheEntry<>(modelId, mr, mle), Long.MAX_VALUE);
+                                            CacheEntry<?> failedEntry = new CacheEntry<>(modelId, mr, mle);
+                                            cacheEntry = unloadManager != null
+                                                ? unloadManager.insertFailedPlaceholderEntry(modelId, failedEntry, Long.MAX_VALUE)
+                                                : runtimeCache.putIfAbsent(modelId, failedEntry, Long.MAX_VALUE);
                                             if (cacheEntry == null) {
                                                 throw mle;
                                             }
@@ -5051,7 +4943,12 @@ public abstract class ModelMesh extends ThriftService
         boolean weCreatedCacheEntry = false, success = false;
         try {
             while (true) {
-                CacheEntry<?> existCe = runtimeCache.putIfAbsent(modelId, ce, lastUsedTime);
+                CacheEntry<?> existCe;
+                if (unloadManager == null) {
+                    existCe = runtimeCache.putIfAbsent(modelId, ce, lastUsedTime);
+                } else {
+                    existCe = unloadManager.insertNewEntry(modelId, ce, lastUsedTime);
+                }
                 // try to add placeholder entry in local cache
                 if (existCe == null) {
                     weCreatedCacheEntry = true;
@@ -5159,7 +5056,7 @@ public abstract class ModelMesh extends ThriftService
             }
             int absSize = Math.abs(initialSize);
 
-            // Optimization - abort early if it's going to be be evicted immediately.
+            // Optimization - abort early if it's going to be evicted immediately.
             // This will catch common case where lastUsed is eldest in cache and the
             // pathological case of predicted size > total capacity, but not other cases.
             // (conditions below ordered roughly by cost of evaluation)
@@ -5335,8 +5232,7 @@ public abstract class ModelMesh extends ThriftService
     }
 
     protected long getAdjustedCacheCapacity() {
-        long cap = runtimeCache.capacity();
-        return UNLOAD_BUFF != null ? cap - UNLOAD_BUFF.getWeight() : cap;
+        return unloadManager != null ? unloadManager.getAdjustedCacheCapacity() : runtimeCache.capacity();
     }
 
     /* --------------------- InstanceRecord (local cache state) publishing --------------------------------- */
@@ -5345,9 +5241,9 @@ public abstract class ModelMesh extends ThriftService
         long oldest = runtimeCache.oldestTime();
         long cap = runtimeCache.capacity(), used = runtimeCache.weightedSize();
         int count = runtimeCache.size(); //TODO maybe don't get every time
-        if (UNLOAD_BUFF != null) {
+        if (unloadManager != null) {
             // remove unloading buffer weight from published values
-            int weight = UNLOAD_BUFF.getWeight();
+            int weight = unloadManager.getUnloadBufferWeight();
             cap -= weight;
             used -= weight;
             count--;
@@ -5379,9 +5275,9 @@ public abstract class ModelMesh extends ThriftService
                 long oldest = runtimeCache.oldestTime();
                 long cap = runtimeCache.capacity(), used = runtimeCache.weightedSize();
                 int count = runtimeCache.size(); //TODO maybe don't get every time
-                if (UNLOAD_BUFF != null) {
+                if (unloadManager != null) {
                     // remove unloading buffer weight from published values
-                    int weight = UNLOAD_BUFF.getWeight();
+                    int weight = unloadManager.getUnloadBufferWeight();
                     cap -= weight;
                     used -= weight;
                     count--;
@@ -5603,8 +5499,8 @@ public abstract class ModelMesh extends ThriftService
                     final long before = logger.isDebugEnabled() ? nanoTime() : 0L;
 
                     Map<String, CacheEntry<?>> usedSinceLastRun = runtimeCache.descendingMapWithCutoff(lastTime);
-                    if (UNLOAD_BUFF != null) {
-                        usedSinceLastRun.remove(UNLOAD_BUFFER_CACHE_KEY);
+                    if (unloadManager != null) {
+                        unloadManager.removeUnloadBufferEntry(usedSinceLastRun);
                     }
                     if (usedSinceLastRun.isEmpty()) {
                         // no invocations since last check
@@ -5787,8 +5683,8 @@ public abstract class ModelMesh extends ThriftService
 
                     long before = nanoTime();
                     Map<String, CacheEntry<?>> cacheEntries = runtimeCache.descendingMap();
-                    if (UNLOAD_BUFF != null) {
-                        cacheEntries.remove(UNLOAD_BUFFER_CACHE_KEY);
+                    if (unloadManager != null) {
+                        unloadManager.removeUnloadBufferEntry(cacheEntries);
                     }
                     int count = cacheEntries.size();
                     if (count > 0) {
@@ -6906,8 +6802,8 @@ public abstract class ModelMesh extends ThriftService
         boolean debug = logger.isDebugEnabled();
         // the returned map is a private copy
         Map<String, Long> cacheEntries = runtimeCache.descendingLruMap();
-        if (UNLOAD_BUFF != null) {
-            cacheEntries.remove(UNLOAD_BUFFER_CACHE_KEY);
+        if (unloadManager != null) {
+            unloadManager.removeUnloadBufferEntry(cacheEntries);
         }
         if (foundOther) {
             if (!cacheEntries.isEmpty()) {

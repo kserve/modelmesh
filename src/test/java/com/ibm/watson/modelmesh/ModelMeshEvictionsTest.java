@@ -39,7 +39,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -126,7 +125,7 @@ public class ModelMeshEvictionsTest {
         List<String> modelIds = generateModelIds(modelLoadCount);
 
         //load models
-        testMultiLoad(standaloneClient, standaloneRegistry, standaloneInstanceInfo, modelIds);
+        multiLoad(standaloneClient, standaloneRegistry, standaloneInstanceInfo, modelIds, null);
 
         //verify state
         verifyMultiLoadState(standaloneClient, standaloneRegistry, standaloneInstanceInfo, modelIds);
@@ -145,7 +144,6 @@ public class ModelMeshEvictionsTest {
      * When we try to load multiple models exceeding the total capacity then the models loaded most recently must be present
      */
     @Test
-    @Disabled // Fails intermittently due to a cascading-eviction bug that will be fixed in imminent PR
     public void testMultiLoadWithEvictionStandalone() throws Exception {
         System.out.println("[Client] testMultiLoadWithEvictionStandalone");
 
@@ -169,7 +167,48 @@ public class ModelMeshEvictionsTest {
                 getIdListOfModelsWhichShouldBeLoaded(generatedModelIds, modelLoadCount, maxModelsWithoutEviction, 0);
 
         //load models
-        testMultiLoad(standaloneClient, standaloneRegistry, standaloneInstanceInfo, generatedModelIds);
+        multiLoad(standaloneClient, standaloneRegistry, standaloneInstanceInfo, generatedModelIds, null);
+
+        //verify state
+        verifyMultiLoadState(standaloneClient, standaloneRegistry, standaloneInstanceInfo,
+                idsForModelsWhichShouldBeLoaded);
+
+        // destroy model records after verification
+        destroyModelsFromCluster(standaloneClient, standaloneRegistry, standaloneInstanceInfo, generatedModelIds);
+    }
+
+    @Test
+    public void testMultiLoadWithBigEvictionStandalone() throws Exception {
+        System.out.println("[Client] testMultiLoadWithEvictionStandalone");
+
+        System.out.println("[Client] DUMMY_CAPACITY:" + DUMMY_CAPACITY
+                           + " DummyClassifierLoader.DEFAULT_MODEL_SIZE:" + DummyClassifierLoader.DEFAULT_MODEL_SIZE
+                           + " ModelLoader.UNIT_SIZE:" + ModelLoader.UNIT_SIZE);
+
+        int maxModelsWithoutEviction =
+                (int) (DUMMY_CAPACITY * 1 / (DummyClassifierLoader.DEFAULT_MODEL_SIZE * ModelLoader.UNIT_SIZE));
+        maxModelsWithoutEviction = (int) (0.9 * maxModelsWithoutEviction); // Subtract 10% for model unloading buffer
+        System.out.println("[Client] No of models that can be loaded without eviction:" + maxModelsWithoutEviction);
+
+        int modelsToLoadBeyondCapacity = 3;
+
+        //generate model Ids
+        int modelLoadCount = maxModelsWithoutEviction + modelsToLoadBeyondCapacity;
+        List<String> generatedModelIds = generateModelIds(modelLoadCount);
+        List<String> allButOne = generatedModelIds.subList(0, generatedModelIds.size() - 1);
+        List<String> largeFinalModel = Collections.singletonList(generatedModelIds.get(generatedModelIds.size() - 1));
+
+        //expected model ids for loaded models - one 4x size model plus five 1x sized models = 6 out of 13 should remain loaded
+        List<String> idsForModelsWhichShouldBeLoaded = generatedModelIds.subList(6, generatedModelIds.size());
+
+        //load models
+        multiLoad(standaloneClient, standaloneRegistry, standaloneInstanceInfo, allButOne, null);
+
+        // Last one we add will be 4x the size of the others, should displace 4 of them
+        multiLoad(standaloneClient, standaloneRegistry, standaloneInstanceInfo, largeFinalModel,
+            Long.toString(DummyClassifierLoader.DEFAULT_MODEL_SIZE * 4));
+
+        Thread.sleep(300); // wait for possible cascade of evictions
 
         //verify state
         verifyMultiLoadState(standaloneClient, standaloneRegistry, standaloneInstanceInfo,
@@ -189,7 +228,6 @@ public class ModelMeshEvictionsTest {
      * then the models loaded most recently must be present
      */
     @Test
-    @Disabled // Fails intermittently due to a cascading-eviction bug that will be fixed in imminent PR
     public void testMultiLoadWithEvictionStandaloneReuse() throws Exception {
         System.out.println("[Client] testMultiLoadWithEvictionStandaloneReuse");
 
@@ -206,7 +244,7 @@ public class ModelMeshEvictionsTest {
 
         // generate model Ids to fill instance and load them
         List<String> generatedModelIds = generateModelIds(maxModelsWithoutEviction);
-        testMultiLoad(standaloneClient, standaloneRegistry, standaloneInstanceInfo, generatedModelIds);
+        multiLoad(standaloneClient, standaloneRegistry, standaloneInstanceInfo, generatedModelIds, null);
         // verify state
         verifyMultiLoadState(standaloneClient, standaloneRegistry, standaloneInstanceInfo, generatedModelIds);
 
@@ -217,7 +255,7 @@ public class ModelMeshEvictionsTest {
         }
 
         List<String> newModelIds = generateModelIds(modelsToLoadBeyondCapacity);
-        testMultiLoad(standaloneClient, standaloneRegistry, standaloneInstanceInfo, newModelIds);
+        multiLoad(standaloneClient, standaloneRegistry, standaloneInstanceInfo, newModelIds, null);
         verifyMultiLoadState(standaloneClient, standaloneRegistry, standaloneInstanceInfo, newModelIds);
 
         // get expected model ids for loaded models
@@ -252,7 +290,7 @@ public class ModelMeshEvictionsTest {
         List<String> modelIds = generateModelIds(modelLoadCount);
 
         //load models
-        testMultiLoad(clusterClient, clusterRegistry, clusterInstanceInfo, modelIds);
+        multiLoad(clusterClient, clusterRegistry, clusterInstanceInfo, modelIds, null);
 
         // add this line if we want to check if the test fails on looking for a model which has not been loaded
         // modelIds.add(getNextModelId());
@@ -274,7 +312,6 @@ public class ModelMeshEvictionsTest {
      * When we try to load multiple models exceeding the total capacity then the models loaded most recently must be present
      */
     @Test
-    @Disabled // Fails intermittently due to a cascading-eviction bug that will be fixed in imminent PR
     public void testMultiLoadWithEvictionCluster() throws Exception {
         System.out.println("[Client] testMultiLoadWithEvictionCluster");
 
@@ -302,7 +339,7 @@ public class ModelMeshEvictionsTest {
                 modelLoadCount, maxModelsWithoutEviction, wiggleRoom);
 
         //load models
-        testMultiLoad(clusterClient, clusterRegistry, clusterInstanceInfo, generatedModelIds);
+        multiLoad(clusterClient, clusterRegistry, clusterInstanceInfo, generatedModelIds, null);
 
         //verify state
         verifyMultiLoadState(clusterClient, clusterRegistry, clusterInstanceInfo, idsForModelsWhichShouldBeLoaded);
@@ -322,7 +359,6 @@ public class ModelMeshEvictionsTest {
      * present
      */
     @Test
-    @Disabled // Fails intermittently due to a cascading-eviction bug that will be fixed in imminent PR
     public void testMultiLoadWithEvictionClusterReuse() throws Exception {
         System.out.println("[Client] testMultiLoadWithEvictionClusterReuse");
 
@@ -339,7 +375,7 @@ public class ModelMeshEvictionsTest {
 
         // generate model Ids to fill instance and load them
         List<String> generatedModelIds = generateModelIds(maxModelsWithoutEviction);
-        testMultiLoad(clusterClient, clusterRegistry, clusterInstanceInfo, generatedModelIds);
+        multiLoad(clusterClient, clusterRegistry, clusterInstanceInfo, generatedModelIds, null);
         // verify state
         verifyMultiLoadState(clusterClient, clusterRegistry, clusterInstanceInfo, generatedModelIds);
 
@@ -350,7 +386,7 @@ public class ModelMeshEvictionsTest {
         }
 
         List<String> newModelIds = generateModelIds(modelsToLoadBeyondCapacity);
-        testMultiLoad(clusterClient, clusterRegistry, clusterInstanceInfo, newModelIds);
+        multiLoad(clusterClient, clusterRegistry, clusterInstanceInfo, newModelIds, null);
         verifyMultiLoadState(clusterClient, clusterRegistry, clusterInstanceInfo, newModelIds);
 
         // get expected model ids for loaded models
@@ -560,10 +596,11 @@ public class ModelMeshEvictionsTest {
         return false;
     }
 
-    public void testMultiLoad(LegacyModelMeshService.Iface client, TableView<ModelRecord> registry,
-            TableView<InstanceRecord> instanceInfo, List<String> modelIds) throws Exception {
+    public void multiLoad(LegacyModelMeshService.Iface client, TableView<ModelRecord> registry,
+            TableView<InstanceRecord> instanceInfo, List<String> modelIds, String modelKey) throws Exception {
 
         ModelInfo modelInfo = new ModelInfo(serviceType, modelPath);
+        modelInfo.setEncKey(modelKey);
 
         //log state before models added
         InstanceStateUtil.logModelRegistry(registry);
