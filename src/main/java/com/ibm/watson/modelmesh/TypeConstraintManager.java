@@ -56,6 +56,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.ibm.watson.modelmesh.ModelMesh.getStringParameter;
@@ -616,10 +617,10 @@ public final class TypeConstraintManager {
         }
         if (newMap != null) {
             if (!ptsToInstanceSetStats.isEmpty()) {
-                logger.info("Clearing " + ptsToInstanceSetStats.size() +
-                            " prohibited type sets before repopulation: " +
-                            Maps.transformValues(ptsToInstanceSetStats,
-                                    InstanceSetStatsTracker::getInstanceCount));
+                logger.info("Clearing " + ptsToInstanceSetStats.size() + " prohibited type sets before repopulation: "
+                        + ptsToInstanceSetStats.entrySet().stream()
+                        .map(e -> Arrays.toString(e.getKey()) + ": " + e.getValue().getInstanceCount())
+                        .collect(Collectors.joining(", ", "{", "}")));
             }
             labelsToInstanceSetStats.clear();
             ptsToInstanceSetStats.clear();
