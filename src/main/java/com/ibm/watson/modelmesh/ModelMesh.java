@@ -1301,7 +1301,7 @@ public abstract class ModelMesh extends ThriftService
 
     {
         String btspClearanceStr = System.getenv(BOOTSTRAP_CLEARANCE_PERIOD_ENV_VAR);
-        if (btspClearanceStr != null && btspClearanceStr.isEmpty()) {
+        if (!Strings.isNullOrEmpty(btspClearanceStr)) {
             BOOTSTRAP_CLEARANCE_PERIOD_MS = Long.parseLong(btspClearanceStr);
         }
 
