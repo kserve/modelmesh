@@ -26,8 +26,6 @@ import java.util.Map.Entry;
 
 /**
  * Class which models instance state
- *
- * @author nrao
  */
 public class InstanceStateUtil {
 

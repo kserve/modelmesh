@@ -22,7 +22,6 @@ import java.util.concurrent.atomic.LongAdder;
  * This class is currently only used for the instance-level request
  * rate or time tracking, not for each model copy within instances'
  * caches which works a bit differently.
- * @author nickhill
  */
 public class RateTracker {
 
