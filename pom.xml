@@ -273,14 +273,6 @@
     </pluginManagement>
   </build>
 
-  <distributionManagement>
-    <snapshotRepository>
-        <id>ossrh</id>
-        <name>Central Repository OSSRH</name>
-        <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-    </snapshotRepository>
-  </distributionManagement>
-
   <dependencies>
 
     <dependency>
