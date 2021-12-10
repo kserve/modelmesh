@@ -58,23 +58,23 @@
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
     <grpc-version>1.42.1</grpc-version>
-    <netty-version>4.1.70.Final</netty-version>
-    <netty-tcnative-version>2.0.45.Final</netty-tcnative-version>
+    <netty-version>4.1.71.Final</netty-version>
+    <netty-tcnative-version>2.0.46.Final</netty-tcnative-version>
     <litelinks-version>1.7.1</litelinks-version>
     <kv-utils-version>0.5.0</kv-utils-version>
     <etcd-java-version>0.0.18</etcd-java-version>
     <protobuf-version>3.19.1</protobuf-version>
-    <annotation-version>9.0.54</annotation-version>
+    <annotation-version>9.0.56</annotation-version>
     <guava-version>31.0.1-jre</guava-version>
     <jackson-databind-version>2.13.0</jackson-databind-version>
     <gson-version>2.8.9</gson-version>
-    <eclipse-collections-version>10.4.0</eclipse-collections-version>
-    <log4j2-version>2.14.1</log4j2-version>
+    <eclipse-collections-version>11.0.0</eclipse-collections-version>
+    <log4j2-version>2.15.0</log4j2-version>
     <slf4j-version>1.7.32</slf4j-version>
     <!-- Care must be taken when updating the prometheus client lib version
          since we have some custom optimized extensions to this -->
     <prometheus-version>0.9.0</prometheus-version>
-    <junit-version>5.8.1</junit-version>
+    <junit-version>5.8.2</junit-version>
 
     <dockerhome>${project.build.directory}/dockerhome</dockerhome>
     <skipTests>false</skipTests>
@@ -413,8 +413,18 @@
       <classifier>linux-x86_64</classifier>
     </dependency>
     <dependency>
+      <!-- TODO remove post netty 4.1.71
+           (tcnative is now in netty bom) -->
+      <groupId>io.netty</groupId>
+      <artifactId>netty-tcnative-classes</artifactId>
+      <version>${netty-tcnative-version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-tcnative-boringssl-static</artifactId>
+      <!-- TODO remove version post netty 4.1.71
+           (tcnative is now in netty bom) -->
       <version>${netty-tcnative-version}</version>
       <scope>runtime</scope>
     </dependency>
