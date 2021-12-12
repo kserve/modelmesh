@@ -103,7 +103,10 @@ RUN microdnf install shadow-utils python36 && \
     mkdir -p log && \
     chown -R app:0 . && \
     chmod -R 771 . && chmod 775 *.sh *.py && \
-    echo "${buildId}" > /opt/kserve/mmesh/build-version
+    echo "${buildId}" > /opt/kserve/mmesh/build-version && \
+    \
+    # Disable java FIPS - see https://access.redhat.com/documentation/en-us/openjdk/11/html-single/configuring_openjdk_11_on_rhel_with_fips/index#config-fips-in-openjdk
+    sed -i 's/security.useSystemPropertiesFile=true/security.useSystemPropertiesFile=false/g' $JAVA_HOME/conf/security/java.security
 
 EXPOSE 8080
 
