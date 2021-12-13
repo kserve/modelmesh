@@ -58,8 +58,7 @@
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
     <grpc-version>1.42.1</grpc-version>
-    <netty-version>4.1.71.Final</netty-version>
-    <netty-tcnative-version>2.0.46.Final</netty-tcnative-version>
+    <netty-version>4.1.72.Final</netty-version>
     <litelinks-version>1.7.1</litelinks-version>
     <kv-utils-version>0.5.0</kv-utils-version>
     <etcd-java-version>0.0.18</etcd-java-version>
@@ -413,19 +412,8 @@
       <classifier>linux-x86_64</classifier>
     </dependency>
     <dependency>
-      <!-- TODO remove post netty 4.1.71
-           (tcnative is now in netty bom) -->
-      <groupId>io.netty</groupId>
-      <artifactId>netty-tcnative-classes</artifactId>
-      <version>${netty-tcnative-version}</version>
-      <scope>runtime</scope>
-    </dependency>
-    <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-tcnative-boringssl-static</artifactId>
-      <!-- TODO remove version post netty 4.1.71
-           (tcnative is now in netty bom) -->
-      <version>${netty-tcnative-version}</version>
       <scope>runtime</scope>
     </dependency>
 
