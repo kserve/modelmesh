@@ -888,9 +888,11 @@ public abstract class ModelMesh extends ThriftService
                 logger.info("Maximum grpc connection age grace set to " + maxGrpcConnectionAgeGrace + " seconds");
             }
 
+            LogRequestHeaders logHeaders = LogRequestHeaders.getConfiguredLogRequestHeaders();
+
             grpcServer = new ModelMeshApi((SidecarModelMesh) this, vModelManager, GRPC_PORT, keyCertFile, privateKeyFile,
                     privateKeyPassphrase, clientAuth, caCertFiles, maxGrpcMessageSize, maxGrpcHeadersSize,
-                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace);
+                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders);
         }
 
         if (grpcServer != null) {
@@ -988,7 +990,7 @@ public abstract class ModelMesh extends ThriftService
         config.addAndInvokeListener((key, value) -> {
             // defaults to env var, then true
             boolean newValue = value != null ? Boolean.parseBoolean(value)
-                    : !"false".equalsIgnoreCase(System.getenv(LOG_EACH_INVOKE_ENV_VAR));
+                    : "true".equalsIgnoreCase(System.getenv(LOG_EACH_INVOKE_ENV_VAR));
             logModelInvocations = newValue;
             logger.info(LOG_EACH_INVOCATION + " parameter now set to " + newValue);
         }, Collections.singleton(LOG_EACH_INVOCATION));

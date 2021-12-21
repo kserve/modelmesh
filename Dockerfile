@@ -56,6 +56,8 @@ LABEL image="build"
 
 COPY / /build
 
+ENV MAVEN_OPTS="-Dfile.encoding=UTF8"
+
 RUN mvn -B package -DskipTests=true --file pom.xml
 
 ###############################################################################

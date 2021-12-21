@@ -41,6 +41,8 @@ echo
 : ${SERVICE_ARGS:=""}
 PRIVATE_ENDPOINT=''
 LOG_CONFIG_ARG="-Dlog4j.configurationFile=$MM_INSTALL_PATH/lib/log4j2.xml"
+# Enable garbage-free log4j ThreadContext
+LOG_PERF_ARGS="-Dlog4j2.enable.threadlocals=true -Dlog4j2.garbagefree.threadContextMap=true"
 
 if [[ -e "/var/run/secrets/kubernetes.io/serviceaccount" ]]; then
 	# When running under Kubernetes, the pod specification is expected to
@@ -397,12 +399,13 @@ exec $JAVA_HOME/bin/java -cp "$LL_JAR:lib/*" -XX:+UnlockExperimentalVMOptions -X
  ${STRING_SCALE_JVM_ARGS} \
  -XX:MaxInlineLevel=28 \
  -Xlog:gc:"${MM_INSTALL_PATH}/log/vgc_${HOSTNAME}.log" ${GC_DIAG_ARGS} \
+ -Dfile.encoding=UTF8 \
  -Dio.netty.tryReflectionSetAccessible=true \
  ${JAVA_MAXDIRECT_ARG} ${NETTY_MAXDIRECT_ARG} ${NETTY_DISABLE_CHECK_ARGS} \
  ${GRPC_USE_SHARED_ALLOC_ARG} \
  ${SSL_PK_ARG} ${TRUSTSTORE_ARG} ${LITELINKS_ARGS} ${CUSTOM_JVM_ARGS} \
  $LL_OPENSSL_ARG \
  $PRIVATE_ENDPOINT_ARG \
- $LOG_CONFIG_ARG \
+ $LOG_CONFIG_ARG $LOG_PERF_ARGS \
  com.ibm.watson.litelinks.server.LitelinksService \
  -s ${MM_SERVICE_CLASS} -n ${MM_SERVICE_NAME} -a ${ANCHOR_FILE} ${SERVICE_ARGS} ${LL_PROBE_ARG}
