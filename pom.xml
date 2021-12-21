@@ -158,6 +158,7 @@
             -Dio.netty.tryReflectionSetAccessible=true -Dio.grpc.netty.useCustomAllocator=false
             -Dlitelinks.produce_pooled_bytebufs=true -Dlitelinks.cancel_on_client_close=true
             -Dlitelinks.ssl.use_jdk=false
+            -Dfile.encoding=UTF8
           </argLine>
           <!-- required to workaround issue with openjdk 8u181-b13-2 -->
           <useSystemClassLoader>false</useSystemClassLoader>

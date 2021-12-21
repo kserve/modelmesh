@@ -58,6 +58,7 @@ import io.grpc.Contexts;
 import io.grpc.Deadline;
 import io.grpc.HandlerRegistry;
 import io.grpc.Metadata;
+import io.grpc.Metadata.Key;
 import io.grpc.Server;
 import io.grpc.ServerCall;
 import io.grpc.ServerCall.Listener;
@@ -153,6 +154,9 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
     protected final ThreadPoolExecutor threads;
     protected final EventLoopGroup bossGroup;
 
+    // null if header logging is not enabled.  
+    protected final LogRequestHeaders logHeaders;
+
     /**
      * Create <b>and start</b> the server.
      *
@@ -167,15 +171,17 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
      * @param maxMessageSize        in bytes
      * @param maxConnectionAge      in seconds
      * @param maxConnectionAgeGrace in seconds, custom grace time for graceful connection termination
+     * @param logHeaders
      * @throws IOException
      */
     public ModelMeshApi(SidecarModelMesh delegate, VModelManager vmm, int port, File keyCert, File privateKey,
             String privateKeyPassphrase, ClientAuth clientAuth, File[] trustCerts,
-            int maxMessageSize, int maxHeadersSize, long maxConnectionAge, long maxConnectionAgeGrace)
-            throws IOException {
+            int maxMessageSize, int maxHeadersSize, long maxConnectionAge, long maxConnectionAgeGrace,
+            LogRequestHeaders logHeaders) throws IOException {
 
         this.delegate = delegate;
         this.vmm = vmm;
+        this.logHeaders = logHeaders;
 
         this.multiParallelism = getMultiParallelism();
 
@@ -194,10 +200,13 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
 
         boolean ok = false;
         try {
+            ServerServiceDefinition service = logHeaders == null ?
+                ServerInterceptors.intercept(thisService, BALANCED_HEADER_PASSER) :
+                ServerInterceptors.intercept(thisService, logHeaders.serverInterceptor(), BALANCED_HEADER_PASSER);
+
             NettyServerBuilder nsb = NettyServerBuilder.forPort(port).executor(threads)
                     .maxInboundMessageSize(maxMessageSize)
-                    .addService(ServerInterceptors.intercept(thisService, BALANCED_HEADER_PASSER))
-                    .fallbackHandlerRegistry(new Registry());
+                    .addService(service).fallbackHandlerRegistry(new Registry());
 
             if (maxHeadersSize >= 0) {
                 nsb.maxInboundMetadataSize(maxHeadersSize);
@@ -681,6 +690,9 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
 
                 io.grpc.Status status = INTERNAL;
                 try (InterruptingListener cancelListener = newInterruptingListener()) {
+                    if (logHeaders != null) {
+                        logHeaders.addToMDC(headers); // MDC cleared in finally block
+                    }
                     ModelResponse response = null;
                     try {
                         try {
@@ -700,9 +712,8 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                                 while (midIt.hasNext()) {
                                     idList.add(validateModelId(midIt.next(), isVModel));
                                 }
-                                response =
-                                        applyParallelMultiModel(idList, isVModel, methodName, balancedMetaVal, headers,
-                                                reqMessage, allRequired);
+                                response = applyParallelMultiModel(idList, isVModel, methodName,
+                                        balancedMetaVal, headers, reqMessage, allRequired);
                             }
                         } finally {
                             releaseReqMessage();
@@ -846,7 +857,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
     protected ModelResponse applyParallelMultiModel(List<String> modelIds, boolean isVModel, String methodName,
             String balancedMetaVal, Metadata headers, ByteBuf data, boolean requireAll) throws Exception {
 
-        CompletionService<ModelResponse> parallel = new ExecutorCompletionService<>(threads);
+        final CompletionService<ModelResponse> parallel = new ExecutorCompletionService<>(threads);
         final int total = modelIds.size();
         assert total > 0;
         int sent = 0, done = 0, found = 0;
@@ -868,6 +879,9 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         // use attach directly to avoid creating extra Callable wrappers
                         Context prevContext = curContext.attach();
                         try {
+                            if (logHeaders != null) {
+                                logHeaders.addToMDC(headers);
+                            }
                             // need to pass slices of the buffers for threadsafety
                             return callModel(modelId, isVModel, methodName, balancedMetaVal, headers, data.slice());
                         } catch (ModelNotFoundException mnfe) {

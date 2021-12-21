@@ -19,6 +19,7 @@ package com.ibm.watson.modelmesh;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.ProcessBuilder.Redirect;
 import java.net.ConnectException;
 import java.net.URI;
@@ -75,13 +76,21 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
         }
     }
 
+    interface PodCloser extends Closeable {
+        InputStream getInputStream();
+    }
+
     protected abstract int replicaCount();
 
     protected boolean useDifferentInternalPortForInference() {
         return false;
     }
 
-    private Closeable[] podClosers;
+    private PodCloser[] podClosers;
+
+    protected PodCloser[] getPodClosers() {
+        return podClosers;
+    }
 
     @BeforeAll
     public void initialize() throws Exception {
@@ -93,19 +102,19 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
         List<String> extraLlArgs = extraLitelinksArgs();
 
         String replicaSetId = "RS1";
-        podClosers = new Closeable[replicaCount()];
+        podClosers = new PodCloser[replicaCount()];
         for (int i = 0; i < podClosers.length; i++) {
             podClosers[i] = startModelMeshPod(kvStoreString, replicaSetId, 9000 + i * 4,
                     extraEnvVars, extraRtEnvVars, extraJvmArgs, extraLlArgs,
-                    useDifferentInternalPortForInference());
+                    useDifferentInternalPortForInference(), inheritIo());
         }
         System.out.println("started");
     }
 
-    private static Closeable startModelMeshPod(String kvStoreString,
+    private static PodCloser startModelMeshPod(String kvStoreString,
             String replicaSetId, int port, Map<String, String> extraEnvVars,
             Map<String, String> extraRtEnvVars, List<String> extraJvmArgs,
-            List<String> extraLlArgs, boolean diffInternalInferencePort) throws Exception {
+            List<String> extraLlArgs, boolean diffInternalInferencePort, boolean inheritIo) throws Exception {
         int externalPort = port;
         int probePort = port + 1;
         int internalPort = port + 2;
@@ -115,7 +124,7 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
         ProcessBuilder mmPb = buildMmProcess(clusterServiceName,
                 replicaSetId, replicaId,
                 kvStoreString, externalPort, internalPort, internalServePort, probePort,
-                extraEnvVars, extraJvmArgs, extraLlArgs);
+                extraEnvVars, extraJvmArgs, extraLlArgs, inheritIo);
         ProcessBuilder mrPb = buildExampleRuntimeProcess(
             internalPort + "," + internalServePort,  extraRtEnvVars);
         Process mmProc = mmPb.start(), mrProc = mrPb.start();
@@ -123,22 +132,29 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
         startedProcs.add(mrProc);
         String instId = clusterServiceName + "-" + replicaSetId + "-" + replicaId;
         //TODO have mechanism for controlled and force shutdown
-        Closeable stopper = () -> {
-            //TODO change this to poll for non-ready and then destroy runtime
-            Optional<Duration> cpu = mmProc.info().totalCpuDuration();
-            mmProc.onExit().whenComplete((p, t) -> {
-                String msg = getTerminationMessage(mmPb);
-                System.out.println("Termination message for instance " + instId + ": " + msg);
-                mrProc.destroy();
-            });
-            // Note this doesn't seem to work well on mac - the process is killed before
-            // it has had time to shut down gracefully.
-            mmProc.destroy();
-            System.out.println("TOTAL CPU DURATION FOR PROC " + instId + ": " + cpu);
-            try {
-                mrProc.waitFor();
-            } catch (InterruptedException e) {
-                throw new IOException(e);
+        PodCloser stopper = new PodCloser() {
+            @Override
+            public InputStream getInputStream() {
+                return mmProc.getInputStream();
+            }
+            @Override
+            public void close() throws IOException {
+                //TODO change this to poll for non-ready and then destroy runtime
+                Optional<Duration> cpu = mmProc.info().totalCpuDuration();
+                mmProc.onExit().whenComplete((p, t) -> {
+                    String msg = getTerminationMessage(mmPb);
+                    System.out.println("Termination message for instance " + instId + ": " + msg);
+                    mrProc.destroy();
+                });
+                // Note this doesn't seem to work well on mac - the process is killed before
+                // it has had time to shut down gracefully.
+                mmProc.destroy();
+                System.out.println("TOTAL CPU DURATION FOR PROC " + instId + ": " + cpu);
+                try {
+                    mrProc.waitFor();
+                } catch (InterruptedException e) {
+                    throw new IOException(e);
+                }
             }
         };
         boolean ok = false;
@@ -191,18 +207,24 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
         }
     }
 
+    protected boolean inheritIo() {
+        return true; // can be overridden
+    }
+
     //TODO could also test with -Dio.netty.transport.noNative=true
 
     public static ProcessBuilder buildMmProcess(String serviceName,
             String replicaSetId, String replicaId,
             String kvStore, int port, int internalPort, int internalServePort, int probePort,
-            Map<String, String> extraEnvVars, List<String> extraJvmArgs, List<String> extraLLArgs) {
+            Map<String, String> extraEnvVars, List<String> extraJvmArgs, List<String> extraLLArgs,
+            boolean inheritIo) {
         //TODO configure log4j for started proc to go to stdout
         String instId = serviceName + "-" + replicaSetId + "-" + replicaId;
         List<String> args = new ArrayList<>(Arrays.asList(
                 System.getProperty("java.home") + "/bin/java",
                 "-cp", System.getProperty("java.class.path"), "-Xmx128M",
                 // Args set in real container
+                "-Dfile.encoding=UTF8",
                 "-Dio.netty.tryReflectionSetAccessible=true",
                 "-Dio.grpc.netty.useCustomAllocator=false",
                 "-Dlitelinks.produce_pooled_bytebufs=true",
@@ -225,7 +247,7 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
         }
 
         Map<String, String> env = ImmutableMap.<String, String>builder()
-                .put("MM_LOG_EACH_INVOKE", "false").put("MM_SEND_DEST_ID", "false")
+                .put("MM_SEND_DEST_ID", "false")
                 .put("KV_STORE", kvStore)
                 .put("INTERNAL_GRPC_PORT", "" + internalPort)
                 .put("MM_SVC_GRPC_PORT", "" + port)
@@ -241,7 +263,7 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
                 .redirectErrorStream(true)
                 //TODO the child procs' output doesn't go to the console
                 // when running via maven surefire
-                .redirectOutput(Redirect.INHERIT);
+                .redirectOutput(inheritIo ? Redirect.INHERIT : Redirect.PIPE);
         pb.environment().putAll(env);
         return pb;
     }

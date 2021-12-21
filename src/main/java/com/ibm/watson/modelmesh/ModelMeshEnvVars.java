@@ -60,6 +60,8 @@ public final class ModelMeshEnvVars {
 
     public static final String DEFAULT_VMODEL_OWNER = "MM_DEFAULT_VMODEL_OWNER";
 
+    public static final String LOG_REQ_HEADER_CONFIG_ENV_VAR = "MM_LOG_REQUEST_HEADERS";
+
     // ---------------------------- Type Constraints --------------------------------
 
     public static final String TYPE_CONSTRAINTS_ENV_VAR = "MM_TYPE_CONSTRAINTS";
