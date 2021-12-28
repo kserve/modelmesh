@@ -28,7 +28,7 @@ RUN true \
     && sed -i 's:#security.provider.1=SunPKCS11 ${java.home}/lib/security/nss.cfg:security.provider.12=SunPKCS11 ${java.home}/lib/security/nss.cfg:g' /usr/lib/jvm/java-11-openjdk-*/conf/security/java.security \
     && true
 
-RUN microdnf install wget tar gzip vim-common python36 && \
+RUN microdnf install wget tar gzip vim-common python38 && \
     # Install same -devel version of java sdk as the base image -headless version
     microdnf install $(rpm -qa java-11-openjdk-headless | sed s/-headless-/-devel-/) && \
     microdnf install maven && \
@@ -93,7 +93,7 @@ COPY --from=build /build/target/dockerhome/ /opt/kserve/mmesh/
 # Make this the current directory when starting the container
 WORKDIR /opt/kserve/mmesh
 
-RUN microdnf install shadow-utils python36 && \
+RUN microdnf install shadow-utils python38 && \
     # Create app user
     useradd -c "Application User" -U -u ${USER} -m app && \
     chown -R app:0 /home/app && \
