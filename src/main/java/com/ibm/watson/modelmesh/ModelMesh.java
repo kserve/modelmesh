@@ -1986,7 +1986,7 @@ public abstract class ModelMesh extends ThriftService
                         //TODO probably only log if took longer than a certain time
                         long tookMillis = msSince(beforeNanos);
                         logger.info("Unload of " + modelId + " completed in " + tookMillis + "ms");
-                        metrics.logTimingMetricSince(Metric.UNLOAD_MODEL_TIME, tookMillis, false);
+                        metrics.logTimingMetricDuration(Metric.UNLOAD_MODEL_TIME, tookMillis, false);
                         metrics.logCounterMetric(Metric.UNLOAD_MODEL);
                     }
                     // else considered trivially succeeded because the corresponding
@@ -2162,7 +2162,7 @@ public abstract class ModelMesh extends ThriftService
                         loadingTimeStats(modelType).recordTime(tookMillis);
                         logger.info("Load of model " + modelId + " type=" + modelType + " completed in " + tookMillis
                                     + "ms");
-                        metrics.logTimingMetricSince(Metric.LOAD_MODEL_TIME, tookMillis, false);
+                        metrics.logTimingMetricDuration(Metric.LOAD_MODEL_TIME, tookMillis, false);
                         metrics.logCounterMetric(Metric.LOAD_MODEL);
                     } catch (Throwable t) {
                         loadFuture = null;
@@ -4349,7 +4349,7 @@ public abstract class ModelMesh extends ThriftService
                         long delayMillis = msSince(beforeNanos);
                         logger.info("Cache miss for model invocation, held up " + delayMillis + "ms");
                         metrics.logCounterMetric(Metric.CACHE_MISS);
-                        metrics.logTimingMetricSince(Metric.CACHE_MISS_DELAY, delayMillis, false);
+                        metrics.logTimingMetricDuration(Metric.CACHE_MISS_DELAY, delayMillis, false);
                     }
                 }
             } else {
