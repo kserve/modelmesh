@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 IBM Corporation
+ * Copyright 2022 IBM Corporation
  * Copyright 2010 Google Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
@@ -19,7 +19,6 @@ package com.ibm.watson.modelmesh.clhm;
 
 import static com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap.DrainStatus.IDLE;
 import static com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap.DrainStatus.PROCESSING;
-import static com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap.DrainStatus.REQUIRED;
 import static java.util.Collections.emptyList;
 //import static java.util.Collections.unmodifiableMap;
 import static java.util.Collections.unmodifiableSet;
@@ -182,9 +181,6 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
   /** Mask value for indexing into the read buffer. */
   static final int READ_BUFFER_INDEX_MASK = READ_BUFFER_SIZE - 1;
 
-  /** The maximum number of write operations to perform per amortized drain. */
-  static final int WRITE_BUFFER_DRAIN_THRESHOLD = 16;
-
   /** A queue that discards all entries. */
   static final Queue<?> DISCARDING_QUEUE = new DiscardingQueue();
 
@@ -209,10 +205,10 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
   final AtomicLong capacity;
 
   final Lock evictionLock;
-  final Queue<Runnable> writeBuffer;
   final AtomicLong[] readBufferWriteCount;
   final AtomicLong[] readBufferDrainAtWriteCount;
-  final AtomicReference<Node<K, V>>[][] readBuffers;
+  // Object is either a Node or a ReadRecord (containing a Node)
+  final AtomicReference<Object>[][] readBuffers;
 
   final AtomicReference<DrainStatus> drainStatus;
   final EntryWeigher<? super K, ? super V> weigher;
@@ -241,7 +237,6 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
     evictionLock = new ReentrantLock();
     weightedSize = new AtomicLong();
     evictionDeque = new LinkedDeque<Node<K, V>>();
-    writeBuffer = new ConcurrentLinkedQueue<Runnable>();
     drainStatus = new AtomicReference<DrainStatus>(IDLE);
 
     readBufferReadCount = new long[NUMBER_OF_READ_BUFFERS];
@@ -253,7 +248,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
       readBufferDrainAtWriteCount[i] = new AtomicLong();
       readBuffers[i] = new AtomicReference[READ_BUFFER_SIZE];
       for (int j = 0; j < READ_BUFFER_SIZE; j++) {
-        readBuffers[i][j] = new AtomicReference<Node<K, V>>();
+        readBuffers[i][j] = new AtomicReference<Object>();
       }
     }
 
@@ -361,24 +356,31 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
     afterRead(node, 0L);
   }
 
+  /** Used to store a non-zero lastUsedTime along with a Node in the read buffer */
+  final class ReadRecord {
+      final Node<K, V> node;
+      final long lastUsedTime;
+
+      public ReadRecord(Node<K, V> node, long lastUsedTime) {
+          this.node = node;
+          this.lastUsedTime = lastUsedTime;
+      }
+
+      public Node<K, V> node() {
+          return node;
+      }
+
+      public long lastUsedTime() {
+          return lastUsedTime;
+      }
+  }
+
   void afterRead(final Node<K, V> node, final long lastUsed) {
-	    if (lastUsed > 0L) {
-	    	afterWrite(new Runnable() {
-	    	    @Override
-	    	    @GuardedBy("evictionLock")
-	    	    public void run() {
-	    	      // must update lastUsed in locked context
-	    	      node.touch(lastUsed);
-	    	      applyRead(node);
-	    	    }
-	    	}, false);
-	    } else {
-	    	final int bufferIndex = readBufferIndex();
-	    	final long writeCount = recordRead(bufferIndex, node);
-	    	drainOnReadIfNeeded(bufferIndex, writeCount);
-	    	notifyListener();
-	    }
-	  }
+    final Object record = lastUsed > 0L ? new ReadRecord(node, lastUsed) : node;
+    final int bufferIndex = readBufferIndex();
+    final long writeCount = recordRead(bufferIndex, record);
+    drainOnReadIfNeeded(bufferIndex, writeCount);
+  }
 
   /** Returns the index to the read buffer to record into. */
   static int readBufferIndex() {
@@ -392,10 +394,10 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
    * Records a read in the buffer and return its write count.
    *
    * @param bufferIndex the index to the chosen read buffer
-   * @param node the entry in the page replacement policy
+   * @param record the entry in the page replacement policy (Node or ReadRecord)
    * @return the number of writes on the chosen read buffer
    */
-  long recordRead(int bufferIndex, Node<K, V> node) {
+  long recordRead(int bufferIndex, Object record) {
     // The location in the buffer is chosen in a racy fashion as the increment
     // is not atomic with the insertion. This means that concurrent reads can
     // overlap and overwrite one another, resulting in a lossy buffer.
@@ -404,7 +406,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
     counter.lazySet(writeCount + 1);
 
     final int index = (int) (writeCount & READ_BUFFER_INDEX_MASK);
-    readBuffers[bufferIndex][index].lazySet(node);
+    readBuffers[bufferIndex][index].lazySet(record);
 
     return writeCount;
   }
@@ -419,8 +421,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
   void drainOnReadIfNeeded(int bufferIndex, long writeCount) {
     final long pending = (writeCount - readBufferDrainAtWriteCount[bufferIndex].get());
     final boolean delayable = (pending < READ_BUFFER_THRESHOLD);
-    final DrainStatus status = drainStatus.get();
-    if (status.shouldDrainBuffers(delayable)) {
+    if (delayable && drainStatus.get() == DrainStatus.IDLE) {
       tryToDrainBuffers();
     }
   }
@@ -430,14 +431,16 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
    *
    * @param task the pending operation to be applied
    */
-  void afterWrite(Runnable task) {
-	  afterWrite(task, true);
-  }
-
   void afterWrite(Runnable task, boolean notify) {
-    writeBuffer.add(task);
-    drainStatus.lazySet(REQUIRED);
-    tryToDrainBuffers();
+    evictionLock.lock();
+    try {
+      drainStatus.lazySet(PROCESSING);
+      drainBuffers();
+      task.run();
+    } finally {
+      drainStatus.lazySet(IDLE);
+      evictionLock.unlock();
+    }
     if (notify) {
       notifyListener();
     }
@@ -453,22 +456,15 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
         drainStatus.lazySet(PROCESSING);
         drainBuffers();
       } finally {
-        drainStatus.compareAndSet(PROCESSING, IDLE);
+        drainStatus.lazySet(IDLE);
         evictionLock.unlock();
       }
     }
   }
 
-  /** Drains the read and write buffers up to an amortized threshold. */
-  @GuardedBy("evictionLock")
-  void drainBuffers() {
-    drainReadBuffers();
-    drainWriteBuffer();
-  }
-
   /** Drains the read buffers, each up to an amortized threshold. */
   @GuardedBy("evictionLock")
-  void drainReadBuffers() {
+  void drainBuffers() {
     final int start = (int) Thread.currentThread().getId();
     final int end = start + NUMBER_OF_READ_BUFFERS;
     for (int i = start; i < end; i++) {
@@ -482,13 +478,23 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
     final long writeCount = readBufferWriteCount[bufferIndex].get();
     for (int i = 0; i < READ_BUFFER_DRAIN_THRESHOLD; i++) {
       final int index = (int) (readBufferReadCount[bufferIndex] & READ_BUFFER_INDEX_MASK);
-      final AtomicReference<Node<K, V>> slot = readBuffers[bufferIndex][index];
-      final Node<K, V> node = slot.get();
-      if (node == null) {
+      final AtomicReference<Object> slot = readBuffers[bufferIndex][index];
+      final Object entry = slot.get();
+      if (entry == null) {
         break;
       }
+      final Node<K, V> node;
+      final long lastUsedTime;
+      if (entry instanceof Node) {
+          node = (Node<K, V>) entry;
+          lastUsedTime = 0L; /*now*/
+      } else {
+          final ReadRecord task = (ReadRecord) entry;
+          node = task.node();
+          lastUsedTime = task.lastUsedTime();
+      }
 
-      node.touch(0L /*now*/);
+      node.touch(lastUsedTime);
       slot.lazySet(null);
       applyRead(node);
       readBufferReadCount[bufferIndex]++;
@@ -506,18 +512,6 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
     if (evictionDeque.contains(node)) {
 //      evictionDeque.moveToBack(node);
     	evictionDeque.reposition(node);
-    }
-  }
-
-  /** Drains the read buffer up to an amortized threshold. */
-  @GuardedBy("evictionLock")
-  void drainWriteBuffer() {
-    for (int i = 0; i < WRITE_BUFFER_DRAIN_THRESHOLD; i++) {
-      final Runnable task = writeBuffer.poll();
-      if (task == null) {
-        break;
-      }
-      task.run();
     }
   }
 
@@ -684,16 +678,10 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
       }
 
       // Discard all pending reads
-      for (AtomicReference<Node<K, V>>[] buffer : readBuffers) {
-        for (AtomicReference<Node<K, V>> slot : buffer) {
+      for (AtomicReference<Object>[] buffer : readBuffers) {
+        for (AtomicReference<Object> slot : buffer) {
           slot.lazySet(null);
         }
-      }
-
-      // Apply all pending writes
-      Runnable task;
-      while ((task = writeBuffer.poll()) != null) {
-        task.run();
       }
     } finally {
       evictionLock.unlock();
@@ -821,7 +809,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
     for (;;) {
       final Node<K, V> prior = data.putIfAbsent(node.key, node);
       if (prior == null) {
-        afterWrite(new AddTask(node, weight));
+        afterWrite(new AddTask(node, weight), true);
         return null;
       } else if (onlyIfAbsent) {
         afterRead(prior, lastUsed);
@@ -838,7 +826,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
           if (weightedDifference == 0) {
             afterRead(prior, lastUsed);
           } else {
-            afterWrite(new UpdateTask(prior, weightedDifference, lastUsed));
+            afterWrite(new UpdateTask(prior, weightedDifference, lastUsed), weightedDifference > 0);
           }
           return oldWeightedValue.value;
         }
@@ -854,7 +842,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
     }
 
     makeRetired(node);
-    afterWrite(new RemovalTask(node));
+    afterWrite(new RemovalTask(node), false);
     return node.getValue();
   }
 
@@ -870,7 +858,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
       if (weightedValue.contains(value)) {
         if (tryToRetire(node, weightedValue)) {
           if (data.remove(key, node)) {
-            afterWrite(new RemovalTask(node));
+            afterWrite(new RemovalTask(node), false);
             return true;
           }
         } else {
@@ -908,7 +896,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
         if (weightedDifference == 0) {
           afterRead(node);
         } else {
-          afterWrite(new UpdateTask(node, weightedDifference, 0L));
+          afterWrite(new UpdateTask(node, weightedDifference, 0L), weightedDifference > 0);
         }
         return oldWeightedValue.value;
       }
@@ -938,7 +926,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
         if (weightedDifference == 0) {
           afterRead(node);
         } else {
-          afterWrite(new UpdateTask(node, weightedDifference, 0L));
+          afterWrite(new UpdateTask(node, weightedDifference, 0L), weightedDifference > 0);
         }
         return true;
       }
@@ -966,7 +954,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
       if (node.compareAndSet(oldWeightedValue, newWeightedValue)) {
         final int weightedDifference = weight - oldWeightedValue.weight;
         if (weightedDifference != 0) {
-          afterWrite(new UpdateTask(node, weightedDifference, -1L));
+          afterWrite(new UpdateTask(node, weightedDifference, -1L), weightedDifference > 0);
         }
         return true;
       }
@@ -1257,12 +1245,12 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
       }
     },
 
-    /** A drain is required due to a pending write modification. */
-    REQUIRED {
-      @Override boolean shouldDrainBuffers(boolean delayable) {
-        return true;
-      }
-    },
+//    /** A drain is required due to a pending write modification. */
+//    REQUIRED {
+//      @Override boolean shouldDrainBuffers(boolean delayable) {
+//        return true;
+//      }
+//    },
 
     /** A drain is in progress. */
     PROCESSING {
