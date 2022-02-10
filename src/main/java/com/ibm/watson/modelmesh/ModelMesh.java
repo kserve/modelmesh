@@ -4218,7 +4218,7 @@ public abstract class ModelMesh extends ThriftService
             final boolean excludeSelf = filtered.excludeSelf, preferSelf = filtered.preferSelf;
             boolean seenSelf = false;
             Map<String, ServiceInstanceInfo> siMap = getMap(sis);
-            long now = currentTimeMillis();
+            final long now = currentTimeMillis();
             ServiceInstanceInfo chosen = null;
             String chosenId = null;
             long chosenTimeStamp = 0L;
@@ -4237,7 +4237,7 @@ public abstract class ModelMesh extends ThriftService
                     }
                     us = true;
                 }
-                ServiceInstanceInfo sii = siMap.get(iid);
+                final ServiceInstanceInfo sii = siMap.get(iid);
                 if (sii == null) {
 //                  filtered.add(ent); // don't filter not-found ones
                     continue;
@@ -4248,12 +4248,12 @@ public abstract class ModelMesh extends ThriftService
                 }
                 if (loadStarted < stillLoadingCutoffTime) {
                     // balanced selection logic
-                    ServiceInstance<?> si = (ServiceInstance<?>) sii;
-                    int inuse = us ? localInvokesInFlight.get() : si.getInUseCount();
+                    final ServiceInstance<?> si = (ServiceInstance<?>) sii;
+                    final int inuse = us ? localInvokesInFlight.get() : si.getInUseCount();
                     if (inuse > min) {
                         continue;
                     }
-                    long nlu = us ? (preferSelf ? 0L : lastInvokeTime) : si.getLastUsedTime();
+                    final long nlu = us ? (preferSelf ? 0L : lastInvokeTime) : si.getLastUsedTime();
                     if (inuse < min) {
                         min = inuse;
                     } else if (nlu >= lru) {
@@ -4275,9 +4275,9 @@ public abstract class ModelMesh extends ThriftService
             }
             if (chosen != null) {
                 // if unbalanced then we might be choosing ourself here,
-                // return null (=> ServiceUnavailableException) to indicate this
+                // return ABORT_REQUEST (=> ServiceUnavailableException) to indicate this
                 if (!excludeSelf && instanceId.equals(chosenId)) {
-                    return null;
+                    return (T) LoadBalancer.ABORT_REQUEST;
                 }
                 if (sendDestinationId) {
                     ensureContextMapIsMutable(ThreadContext.getCurrentContext()).put(DEST_INST_ID_KEY, chosenId);
@@ -4675,7 +4675,7 @@ public abstract class ModelMesh extends ThriftService
             // Those "seen" form a shortlist for the subsequent random choice.
 
             // Filter the iterator based on known hard constraints/exclusions
-            Set<String> constrainTo = typeConstraints != null ?
+            final Set<String> constrainTo = typeConstraints != null ?
                     typeConstraints.getCandidateInstances(exclude.modelType) : null;
 
             final ObjectLongMap<String> excludeReplicaSets = upgradeTracker.getLikelyReplacedReplicaSets();
@@ -4779,14 +4779,14 @@ public abstract class ModelMesh extends ThriftService
             if (simpleCase) {
                 if (us && favourSelf) {
                     // If we are a candidate ourselves and the favourSelf flag is set,
-                    // choose ourselves immediately (returning null indicates this)
-                    return null;
+                    // choose ourselves immediately (returning ABORT_REQUEST indicates this)
+                    return (T) LoadBalancer.ABORT_REQUEST;
                 }
                 candidates.add(bestIid);
                 instReqLoad.add(bestInst.getReqsPerMinute());
 
                 // Simple case, don't need to weigh preferred
-                long oldest = bestInst.getLruTime();
+                final long oldest = bestInst.getLruTime();
                 while (it.hasNext()) {
                     Entry<String, InstanceRecord> ent = it.next();
                     String iid = ent.getKey();
@@ -4818,7 +4818,7 @@ public abstract class ModelMesh extends ThriftService
                     }
 
                     if (us && favourSelf) {
-                        return null; // this is to indicate that we should be chosen
+                        return (T) LoadBalancer.ABORT_REQUEST; // this is to indicate that we should be chosen
                     }
 
                     candidates.add(iid);
@@ -4826,7 +4826,7 @@ public abstract class ModelMesh extends ThriftService
                 }
             }
 
-            int ccount = candidates.size();
+            final int ccount = candidates.size();
             if (ccount == 0) {
                 return null;
             }
@@ -4837,7 +4837,7 @@ public abstract class ModelMesh extends ThriftService
 
             // note this might be negative in the case of load-triggered
             // scale-up (see scale-up logic in rateTrackingTask())
-            long lastUsedAgo = age(exclude.lastUsedTime);
+            final long lastUsedAgo = age(exclude.lastUsedTime);
             String chosenInstId = null;
             if (ccount == 1) {
                 chosenInstId = candidates.get(0);
@@ -4876,7 +4876,7 @@ public abstract class ModelMesh extends ThriftService
             }
 //          candidates.clear(); //TODO only if reused
             if (!favourSelf && instanceId.equals(chosenInstId)) {
-                return null; // indicates we are chosen
+                return (T) LoadBalancer.ABORT_REQUEST; // indicates we are chosen
             }
             boolean exclusions = !exclude.isEmpty();
             if (exclusions || sendDestinationId) {
