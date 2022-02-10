@@ -95,7 +95,7 @@ public final class ModelMeshEnvVars {
 
 
     /**
-     * @deprecated This env var name is  may be misleading. It is currently used to provide
+     * @deprecated This env var name is misleading. It is currently used to provide
      * the certificates corresponding to the private key, not certs for client trust purposes
      * as its name implies.
      * <br />
