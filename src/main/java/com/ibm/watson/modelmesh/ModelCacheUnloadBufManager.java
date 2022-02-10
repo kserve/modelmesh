@@ -96,7 +96,7 @@ final class ModelCacheUnloadBufManager {
     void removeUnloadBufferEntry(Map<String, ?> entries) { //TODO TBD maybe static
         entries.remove(UNLOAD_BUFFER_CACHE_KEY);
     }
-    
+
     // ---------------- Pre-loading phase ----------------------
 
     /**
@@ -111,7 +111,7 @@ final class ModelCacheUnloadBufManager {
      *   <li>Waited-for and "claimed" via {@link #waitForSpaceToLoad(int, BooleanSupplier, long)}
      *       and {@link #claimRequestedSpaceIfReady(int)}</li>
      * </ul>
-     * 
+     *
      * @param modelId
      * @param ce
      * @param lastUsedTime
@@ -180,7 +180,7 @@ final class ModelCacheUnloadBufManager {
             }
         }
         // Ensure evictions triggered from prior weight adjustments have been processed, so that
-        // we properly account for the ncreased unload buffer weight in cacheSpaceIsReady()
+        // we properly account for the increased unload buffer weight in cacheSpaceIsReady()
         try {
             evictionTaskThread.submit(Runnables.doNothing()).get();
         } catch (ExecutionException e) {
@@ -334,7 +334,7 @@ final class ModelCacheUnloadBufManager {
             if (cap < newWeight) {
                 newWeight = cap; // pathological case
                 logger.warn("Entire cache capacity of " + cap + " units (" + mb(cap * UNIT_SIZE)
-                    + "MiB) is now taken up by removed that are still unloading");
+                    + ") is now taken up by removed models that are still unloading");
             }
         }
         UNLOAD_BUFF.updateWeight(newWeight);
