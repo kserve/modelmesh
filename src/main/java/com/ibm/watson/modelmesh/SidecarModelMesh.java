@@ -307,7 +307,14 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
             if (code == Code.UNAVAILABLE) {
                 String message = grpcStatus.getDescription();
                 if (message != null && message.startsWith("Request for unknown model") &&
-                    message.endsWith(" is not found") || message.endsWith(" has no available versions")) {
+                    (message.endsWith(" is not found") || message.endsWith(" has no available versions"))) {
+                    code = Code.NOT_FOUND; // treat as if NOT_FOUND code was returned
+                }
+            }
+            // Seldon MLServer incorrectly returns INVALID_ARGUMENT in the not found case
+            else if (code == Code.INVALID_ARGUMENT) {
+                String message = grpcStatus.getDescription();
+                if (message != null && message.startsWith("Model ") && message.endsWith(" not found")) {
                     code = Code.NOT_FOUND; // treat as if NOT_FOUND code was returned
                 }
             }

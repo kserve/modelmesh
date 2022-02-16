@@ -124,7 +124,7 @@ public class ExampleModelRuntime extends ModelServerImplBase {
 
     private Server[] buildIpServers(int managementPort, int servingPort) {
         if (managementPort == servingPort) return new Server[] { buildIpServer(managementPort) };
- 
+
         return new Server[] {
             addManagementService(serverBuilderForPort(managementPort)).build(),
             addPredictionService(serverBuilderForPort(servingPort)).build()
@@ -413,6 +413,12 @@ public class ExampleModelRuntime extends ModelServerImplBase {
                     response.onError(io.grpc.Status.UNAVAILABLE
                             .withDescription("Request for unknown model: '" + modelId + "' is not found")
                             .asRuntimeException());
+                } else if ("true".equals(System.getenv("MLSERVER_NOT_FOUND_BEHAVIOUR"))) {
+                    // Simulate MLServer bug
+                    System.out.println("Responding with MLServer-specific \"not found\" error (INVALID_ARGUMENT code)");
+                    response.onError(io.grpc.Status.INVALID_ARGUMENT
+                        .withDescription("Model " + modelId + " with version  not found")
+                        .asRuntimeException());
                 } else {
                     response.onError(io.grpc.Status.NOT_FOUND.asException());
                 }
