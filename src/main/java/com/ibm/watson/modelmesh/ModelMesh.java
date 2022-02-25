@@ -3767,7 +3767,8 @@ public abstract class ModelMesh extends ThriftService
                                     (contextMap = ensureContextMapIsMutable(contextMap)).remove(DEST_INST_ID_KEY);
                                 }
                             }
-                        } else // this is an internal "load" request (forwarded from another cluster instance)
+                        } else {
+                            // this is an internal "load" request (forwarded from another cluster instance)
                             if (!FORCE_LOCAL_LOAD.equals(tasInternal)) {
                                 //  here test if this instance is considered a suitable candidate,
                                 //  follow same logic as in CacheMissForwardingLB
@@ -3777,30 +3778,12 @@ public abstract class ModelMesh extends ThriftService
                                     throw new ModelLoadException(); //TODO .. should specifically reflect "stale info"
                                 }
                             }
+                        }
 
                         // here either the local instance was chosen as the target,
                         // no other instances were found/worked,
                         // or it's an internal req meaning the model can only be loaded locally
-                        if (loadTargetFilter != null && loadTargetFilter.isExcluded(instanceId)) {
-                            if (!externalReq) {
-                                // should not be LOAD_LOCAL_ONLY && local filtered
-                                throw newInternalException("Cluster routing error", null);
-                            }
-                            // here loading failed everywhere
-                            if (loadFailureSeen != null) {
-                                throw loadFailureSeen;
-                            }
-                            if (mr.hasLoadFailure()) {
-                                String failInstance = getMostRecent(mr.getLoadFailedInstanceIds());
-                                throw new ModelLoadException(mr.getLoadFailureMessage(failInstance),
-                                        failInstance, 0L, null);
-                            }
-                            if (internalFailureSeen != null) {
-                                throw internalFailureSeen;
-                            }
-                            //maybe define specific exception
-                            throw new ModelLoadException("Nowhere available to load", null, 0L, null);
-                        }
+                        throwIfLocalLoadNotAllowed(externalReq, mr, loadTargetFilter, loadFailureSeen, internalFailureSeen);
 
                         // limit the rate of cache churn - if we are full and our LRU entry is recent,
                         // reject the load rather than thrashing
@@ -3932,6 +3915,38 @@ public abstract class ModelMesh extends ThriftService
                         nanoTime() - methodStartNanos, metricStatusCode);
             }
             curThread.setName(threadNameBefore);
+        }
+    }
+
+    private void throwIfLocalLoadNotAllowed(boolean externalReq, ModelRecord mr, CacheMissExcludeSet loadTargetFilter, ModelLoadException loadFailureSeen, TException internalFailureSeen) throws TException {
+        // Called after the decision has been made to attempt to load the model on the local instance
+
+        // We need to check that
+        // - The load target filter doesn't exclude us
+        // - If there are type constraints, that they don't exclude us
+        Set<String> constrainTo;
+        if ((loadTargetFilter != null && loadTargetFilter.isExcluded(instanceId))
+            || (typeConstraints != null && (constrainTo = typeConstraints.getCandidateInstances(mr.getType())) != null
+                    && !constrainTo.contains(instanceId))) {
+            // We're not eligible to load the model, figure out why and throw an exception
+            if (!externalReq) {
+                // should not be LOAD_LOCAL_ONLY && local filtered
+                throw newInternalException("Cluster routing error", null);
+            }
+            // here loading failed everywhere
+            if (loadFailureSeen != null) {
+                throw loadFailureSeen;
+            }
+            if (mr.hasLoadFailure()) {
+                String failInstance = getMostRecent(mr.getLoadFailedInstanceIds());
+                throw new ModelLoadException(mr.getLoadFailureMessage(failInstance),
+                        failInstance, 0L, null);
+            }
+            if (internalFailureSeen != null) {
+                throw internalFailureSeen;
+            }
+            //maybe define specific exception
+            throw new ModelLoadException("Nowhere available to load", null, 0L, null);
         }
     }
 
