@@ -16,6 +16,9 @@
 
 package com.ibm.watson.modelmesh.example;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import static com.ibm.watson.modelmesh.example.ExampleModelRuntime.FAST_MODE;
 
 public class Model {
@@ -26,41 +29,55 @@ public class Model {
 
     long size;
 
+    long unloadingTime;
+
     public Model(String id, String location) {
         this.id = id;
         this.location = location;
     }
 
+    static final Pattern LOC_PATT = Pattern.compile("SIZE_(\\d+)_(\\d+)_(\\d+)");
+
     public String load() {
         System.out.println("Loading model " + id + "...");
-        // pretend it takes between 1 and 11 secs
-        //TODO make this also vary based on the size
-        if (FAST_MODE) {
-            sleep(100L + (long) (Math.random() * 1000.0));
+
+        Matcher m = location != null ? LOC_PATT.matcher(location) : null;
+
+        long loadingTime;
+        if (m != null && m.matches()) {
+            // size and loading time to simulate encoding in location: "SIZE_<size>_<loadtime>_<unloadtime>"
+            size = Long.parseLong(m.group(1));
+            loadingTime = Long.parseLong(m.group(2));
+            unloadingTime = Long.parseLong(m.group(3));
         } else {
-            sleep(1000L + (long) (Math.random() * 10000.0));
+            // pretend between 64MB and 128MB
+            size = 1024 * 1024 * (64 + (long) (Math.random() * 64.0));
+            // pretend it takes between 1 and 11 secs
+            loadingTime = FAST_MODE ? 100L + (long) (Math.random() * 1000.0)
+                : 1000L + (long) (Math.random() * 10000.0);
+            // pretend it takes between 0 and 2 secs
+            unloadingTime = (long) (Math.random() * (FAST_MODE ? 500.0 : 2000.0));
         }
+
+        sleep(loadingTime); // simulate time to load
 
         if (location != null && location.startsWith("FAIL_")) {
             return location.substring(5); // simulate loading failure
         }
 
-        // pretend between 64MB and 128MB
-        size = 1024 * 1024 * (64 + (long) (Math.random() * 64.0));
         return null;
     }
 
     public long calculateSizeBytes() {
         System.out.println("Calculating size of model " + id + "...");
-        // pretend it takes 1.5 secs
-        sleep(FAST_MODE ? 50L : 1500L);
+        // simulate model sizing time
+        sleep(FAST_MODE ? 50L : 1000L);
         return size;
     }
 
     public void unload() {
         System.out.println("Unloading model " + id + "...");
-        // pretend it takes between 0 and 2 secs
-        sleep((long) (Math.random() * (FAST_MODE ? 500.0 : 2000.0)));
+        sleep(unloadingTime); // simulate time to unload
     }
 
 

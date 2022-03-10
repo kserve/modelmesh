@@ -280,6 +280,10 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
     }
   }
 
+  public Lock getEvictionLock() {
+    return evictionLock;
+  }
+
   /* ---------------- Eviction Support -------------- */
 
   /**
@@ -305,10 +309,10 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
       this.capacity.lazySet(Math.min(capacity, MAXIMUM_CAPACITY));
       drainBuffers();
       evict();
+      notifyListener();
     } finally {
       evictionLock.unlock();
     }
-    notifyListener();
   }
 
   /** Determines whether the map has exceeded its capacity. */
@@ -437,12 +441,12 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
       drainStatus.lazySet(PROCESSING);
       drainBuffers();
       task.run();
+      if (notify) {
+        notifyListener();
+      }
     } finally {
       drainStatus.lazySet(IDLE);
       evictionLock.unlock();
-    }
-    if (notify) {
-      notifyListener();
     }
   }
 
