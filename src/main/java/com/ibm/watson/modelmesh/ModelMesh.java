@@ -433,8 +433,6 @@ public abstract class ModelMesh extends ThriftService
 
     protected final ListeningScheduledExecutorService taskPool;
 
-    protected final ThreadPoolExecutor evictionTaskThread; // single thread
-
     private final boolean isExternal = this instanceof SidecarModelMesh;
 
     protected /*final*/ boolean limitModelConcurrency;
@@ -504,8 +502,6 @@ public abstract class ModelMesh extends ThriftService
                 ThreadPoolHelper.threadFactory("mm-task-thread-%d"));
         stpe.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
         taskPool = MoreExecutors.listeningDecorator(stpe);
-        evictionTaskThread = new ThreadPoolExecutor(1, 1, 0L, MILLISECONDS, new LinkedBlockingQueue<>(),
-                ThreadPoolHelper.threadFactory("mm-evict-thread"));
     }
 
     static final Pattern VERSION_PATT = Pattern.compile(".+-(\\d{8})-(\\d+)");
@@ -739,9 +735,10 @@ public abstract class ModelMesh extends ThriftService
         // if explicit model unloading is required, set up the accounting of this
         // (special placeholder entry in the cache whose weight is adjusted dynamically)
         if (loader.requiresUnload()) {
-            // reserve part of the cache for unloads to prevent cascading evictions
-            int lowerBound = Math.toIntExact(runtimeCache.capacity() / 100);
-            int upperBound = Math.toIntExact(runtimeCache.capacity() / 10);
+            // reserve part of the cache for unloads to avoid blocking new loads in most cases
+            long cacheCapacity = runtimeCache.capacity();
+            int lowerBound = Math.toIntExact(cacheCapacity / 100);
+            int upperBound = Math.toIntExact(cacheCapacity / 10);
             int unitsToReserve = loadingThreads * defaultModelSizeUnits / (loadingThreads <= 2 ? 2 : 4);
 
             int unloadsReservedSizeUnits = Math.max(Math.min(unitsToReserve, upperBound), lowerBound);
@@ -1589,6 +1586,10 @@ public abstract class ModelMesh extends ThriftService
         return ce;
     }
 
+    static final String ceStateString(int st) {
+        return st >= 0 && st < CE_STATE_STRS.length ? CE_STATE_STRS[st] : "UNRECOGNIZED(" + st + ")";
+    }
+
     /**
      * This class holds a model in the cache. It also contains the logic
      * related to loading that model.
@@ -1804,8 +1805,7 @@ public abstract class ModelMesh extends ThriftService
         private volatile int state = NEW;
 
         final String stateString() {
-            int st = state;
-            return st >= 0 && st < CE_STATE_STRS.length ? CE_STATE_STRS[st] : "UNRECOGNIZED(" + st + ")";
+            return ModelMesh.ceStateString(state);
         }
 
         // this is updated prior to attempts to deregister+unload the
@@ -1835,101 +1835,106 @@ public abstract class ModelMesh extends ThriftService
          * @param lastUsed lastUsed time, 0L for unknown or none,
          *                 ALREADY_UNLOADED if already unloaded (e.g. runtime reported not found)
          */
-        public final synchronized boolean remove(boolean evicted, long lastUsed) {
-            final int stateNow = state;
-
+        public final boolean remove(final boolean evicted, long lastUsed) {
+            int stateNow = state;
             if (stateNow >= REMOVED) {
                 return false;
             }
-
-            final boolean isShuttingDown = shuttingDown;
 
             if (lastUsed <= 0L) {
                 lastUsed = stateNow <= LOADING || evicted ? 10L : runtimeCache.getLastUsedTime(modelId);
             }
 
-            if (!evicted && (lastUsed <= 0L || (!isShuttingDown ? !runtimeCache.remove(modelId, this)
-                    // don't actually remove from cache if shutting down
-                    // (avoid GC pressure)
-                    : runtimeCache.getQuietly(modelId) != this))) {
-                return false; // no longer in cache
+            if (!evicted && (lastUsed <= 0L || !runtimeCache.remove(modelId, this))) {
+                // no longer in cache; removal processing will be performed by another thread that
+                // did the cache removal or eviction
+                return false;
             }
 
-            // important that this state change is prior to the cancel() below
-            // since it may re-enter the lock in the complete() method
-            state = REMOVED;
+            // Deadlock here is avoided since we know this won't be called in a cache eviction callback for
+            // the same cache entry (since either we are already in an eviction callback, or we just removed it from the cache)
+            synchronized(this) {
+                stateNow = state;
+                if (stateNow >= REMOVED) {
+                    return false;
+                }
 
-            if (stateNow == NEW) {
-                // wake up waitWhileNew() method
-                notifyAll();
-            }
+                // important that this state change is prior to the cancel() below
+                // since it may re-enter the lock in the complete() method
+                state = REMOVED;
 
-            long unloadDelayMs = -1L;
-            if (stateNow <= LOADING) {
-                // model is not yet loaded, no need to unload
+                if (stateNow == NEW) {
+                    // wake up waitWhileNew() method
+                    notifyAll();
+                }
 
-                // abort - notify waiters
-                setException(new ModelNotHereException(instanceId, modelId));
+                long unloadDelayMs = -1L;
+                if (stateNow <= LOADING) {
+                    // model is not yet loaded, no need to unload
 
-                if (stateNow == QUEUED) {
-                    loadingCount.decrementAndGet();
-                } else if (stateNow == LOADING || stateNow == WAITING) {
-                    // cancel the in-progress loading
-                    ListenableFuture<Void> lfut = loadFuture;
-                    if (lfut != null) {
-                        logger.info("Cancelling in-progress loading of model "
-                                    + modelId + " due to removal (state was " + stateNow + ")");
-                        lfut.cancel(true);
+                    // abort - notify waiters
+                    setException(new ModelNotHereException(instanceId, modelId));
+
+                    if (stateNow == QUEUED) {
+                        loadingCount.decrementAndGet();
+                    } else if (stateNow == LOADING || stateNow == WAITING) {
+                        // cancel the in-progress loading
+                        ListenableFuture<Void> lfut = loadFuture;
+                        if (lfut != null) {
+                            logger.info("Cancelling in-progress loading of model "
+                                + modelId + " due to removal (state was " + ModelMesh.ceStateString(stateNow) + ")");
+                            lfut.cancel(true);
+                        }
+                    }
+                    if (unloadManager != null) {
+                        if (stateNow == NEW || stateNow == QUEUED || stateNow == WAITING) {
+                            unloadManager.cancelSpaceRequestForNewEntry(this);
+                        } else if (stateNow == LOADING) {
+                            // this delay is to add a buffer between
+                            // cancelling the in-progress load and
+                            // initiating the subsequent unload
+                            unloadDelayMs = evicted ? 500L : 3000L;
+                        }
+                    }
+                } else if (stateNow <= ACTIVE && lastUsed != ALREADY_UNLOADED) {
+                    // state is SIZING or ACTIVE
+                    if (stateNow == SIZING) {
+                        // cancel the in-progress sizing
+                        ListenableFuture<Void> lfut = loadFuture;
+                        if (lfut != null && lfut.cancel(true)) {
+                            logger.info("Cancelled in-progress sizing of model "
+                                + modelId + " due to removal (state was " + SIZING + ")");
+                        }
+                    }
+
+                    if (unloadManager != null) {
+                        // Wait 200ms prior to initial check, to avoid race with incoming requests hitting.
+                        // This still constitutes a race but the alternative is additional volatile checks
+                        // on the 99.99% runtime path which we prefer to avoid.
+                        // Give a bit more time in the sizing case to allow for the sizing request
+                        // to be cancelled.
+                        unloadDelayMs = stateNow == SIZING ? 1500L : 200L;
+                    } else {
+                        // We treat removal of active model from the cache as our
+                        // "unload" event if explicit unloading isn't enabled.
+                        // Otherwise, this gets recorded in a callback set in the
+                        // CacheEntry.unload(int) method
+                        metrics.logTimingMetricDuration(Metric.UNLOAD_MODEL_TIME, 0L, false);
+                        metrics.logCounterMetric(Metric.UNLOAD_MODEL);
                     }
                 }
-                if (unloadManager != null) {
-                    if (stateNow == NEW || stateNow == QUEUED || stateNow == WAITING) {
-                        unloadManager.cancelSpaceRequestForNewEntry(this);
-                    } else if (stateNow == LOADING) {
-                        // this delay is to add a buffer between
-                        // cancelling the in-progress load and
-                        // initiating the subsequent unload
-                        unloadDelayMs = evicted ? 500L : 3000L;
-                    }
-                }
-            } else if (stateNow <= ACTIVE && lastUsed != ALREADY_UNLOADED) {
-                // state is SIZING or ACTIVE
-                if (stateNow == SIZING) {
-                    // cancel the in-progress sizing
-                    ListenableFuture<Void> lfut = loadFuture;
-                    if (lfut != null && lfut.cancel(true)) {
-                        logger.info("Cancelled in-progress sizing of model "
-                                    + modelId + " due to removal (state was " + SIZING + ")");
-                    }
+                // else will already have been unloaded
+                else if (state == FAILED && unloadManager != null) {
+                    unloadManager.discardFailedEntry(FAILED_WEIGHT);
                 }
 
-                if (unloadManager != null) {
-                    // Wait 200ms prior to initial check, to avoid race with incoming requests hitting.
-                    // This still constitutes a race but the alternative is additional volatile checks
-                    // on the 99.99% runtime path which we prefer to avoid.
-                    // Give a bit more time in the sizing case to allow for the sizing request
-                    // to be cancelled.
-                    unloadDelayMs = stateNow == SIZING ? 1500L : 200L;
-                } else {
-                    // We treat removal of active model from the cache as our
-                    // "unload" event if explicit unloading isn't enabled.
-                    // Otherwise, this gets recorded in a callback set in the
-                    // CacheEntry.unload(int) method
-                    metrics.logTimingMetricDuration(Metric.UNLOAD_MODEL_TIME, 0L, false);
-                    metrics.logCounterMetric(Metric.UNLOAD_MODEL);
+                if (unloadDelayMs >= 0L && !shuttingDown) {
+                    // here state == LOADING or ACTIVE
+                    triggerUnload(getWeight(), unloadDelayMs);
                 }
-            }
-            // else will already have been unloaded
-            else if (state == FAILED && unloadManager != null) {
-                unloadManager.discardFailedEntry(FAILED_WEIGHT);
-            }
 
-            if (unloadDelayMs >= 0L && !isShuttingDown) {
-                // here state == LOADING or ACTIVE
-                triggerUnload(getWeight(), unloadDelayMs);
+                return true;
             }
-
-            return true;
         }
 
         /**
@@ -2217,8 +2222,9 @@ public abstract class ModelMesh extends ThriftService
                                         + " pre-load waiting for space to become available"));
                     }
                     synchronized (CacheEntry.this) {
-                        if (state != WAITING) {
-                            throw new Exception("State of model " + modelId + " changed to " + stateString()
+                        final int st = state;
+                        if (st != WAITING) {
+                            throw new Exception("State of model " + modelId + " changed to " + ModelMesh.ceStateString(st)
                                                 + " during pre-load waiting, aborting load");
                         }
                         if (unloadManager.claimRequestedSpaceIfReady(required)) {
@@ -2784,12 +2790,15 @@ public abstract class ModelMesh extends ThriftService
     @Override
     public void onEviction(String key, CacheEntry<?> ce, long lastUsed) {
         long now = currentTimeMillis();
+
         // Log prior to dispatch so we can see thread which triggered the eviction
-        logger.info("Eviction triggered for model " + key + " (weight=" + ce.getWeight() + ")");
-        // eviction can be triggered synchronously by arbitrary cache reads/writes,
-        // so always dispatch in separate thread (avoid hidden deadlocks and minimize
-        // latency impact on serving request threads)
-        evictionTaskThread.execute(() -> {
+        int weight = ce.getWeight();
+        logger.info("Eviction triggered for model " + key
+            + " (weight=" + weight + " / " + mb(weight * UNIT_SIZE) + ")");
+
+        // perform deregistration and removal re-attempt on regular task thread; eviction
+        // callbacks are now performed under the cache lock so better to offload as much as possible
+        taskPool.execute(() -> {
             // determine whether a reload should be attempted elsewhere:
             // *don't* reload if this was a cached load failure, or was
             // only just loaded (e.g. an immediate eviction)
@@ -2810,41 +2819,36 @@ public abstract class ModelMesh extends ThriftService
             if (inRegistry || failed) {
                 // don't record "immediate" evictions (additions too old to fit in cache at all)
                 logger.info("Evicted " + (failed ? "failed model record" : "model") + " " + key
-                            + " from local cache, last used " + readableTime(millisSinceLastUsed) + " ago (" + lastUsed
-                            + "ms), invoked " + ce.getTotalInvocationCount() + " times");
+                    + " from local cache, last used " + readableTime(millisSinceLastUsed) + " ago (" + lastUsed
+                    + "ms), invoked " + ce.getTotalInvocationCount() + " times");
                 metrics.logTimingMetricDuration(Metric.AGE_AT_EVICTION, millisSinceLastUsed, false);
                 metrics.logCounterMetric(Metric.EVICT_MODEL);
             }
 
-            // perform deregistration and removal re-attempt on regular task thread;
-            // it's important we don't hold up the single eviction thread
-            final boolean attemptReloadAfter = attemptReload;
-            taskPool.execute(() -> {
-                // remove our record from registry
-                deregisterModel(key, lastUsed, ce.loadTimestamp, ce.loadCompleteTimestamp);
+            // remove our record from registry
+            deregisterModel(key, lastUsed, ce.loadTimestamp, ce.loadCompleteTimestamp);
 
-                if (attemptReloadAfter) {
-                    // if the cluster is less than 95% full, attempt to re-load this model elsewhere
-                    // (rebalancing)
-                    ClusterStats stats = typeSetStats(ce.modelInfo.getServiceType());
-                    if (stats.totalCapacity > 0 && stats.instanceCount > 1
-                        && ((20L * stats.totalFree) / stats.totalCapacity) >= 1) {
-                        try {
-                            StatusInfo si = ensureLoadedElsewhere(key, lastUsed, ce.getWeight());
-                            if (si.getStatus() == Status.LOADING) {
-                                logger.info("Triggered load of evicted model "
-                                        + key + " elsewhere (cluster isn't full)");
-                            }
-                        } catch (Exception e) {
-                            logger.warn("Exception attempting to load evicted model " + key + " elsewhere");
+            if (attemptReload) {
+                // if the cluster is less than 95% full, attempt to re-load this model elsewhere
+                // (rebalancing)
+                ClusterStats stats = typeSetStats(ce.modelInfo.getServiceType());
+                if (stats.totalCapacity > 0 && stats.instanceCount > 1
+                    && ((20L * stats.totalFree) / stats.totalCapacity) >= 1) {
+                    try {
+                        StatusInfo si = ensureLoadedElsewhere(key, lastUsed, ce.getWeight());
+                        if (si.getStatus() == Status.LOADING) {
+                            logger.info("Triggered load of evicted model "
+                                + key + " elsewhere (cluster isn't full)");
                         }
+                    } catch (Exception e) {
+                        logger.warn("Exception attempting to load evicted model " + key + " elsewhere");
                     }
                 }
-            });
-
-            // abort/unload model
-            ce.remove(true, lastUsed);
+            }
         });
+
+        // abort/unload model
+        ce.remove(true, lastUsed);
     }
 
     /**
@@ -7011,7 +7015,6 @@ public abstract class ModelMesh extends ThriftService
             logger.warn("Interrupted while waiting for taskpool termination", e);
             Thread.currentThread().interrupt();
         }
-        evictionTaskThread.shutdown();
 
         // log empty instance metrics here since we're about to disappear
         metrics.logInstanceStats(new InstanceRecord());

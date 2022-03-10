@@ -16,7 +16,6 @@
 
 package com.ibm.watson.modelmesh;
 
-import com.google.common.util.concurrent.Runnables;
 import com.ibm.watson.modelmesh.ModelMesh.CacheEntry;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap;
 import org.apache.logging.log4j.LogManager;
@@ -25,9 +24,8 @@ import org.apache.logging.log4j.Logger;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
 import java.util.function.BooleanSupplier;
 
 import static com.ibm.watson.modelmesh.ModelLoader.UNIT_SIZE;
@@ -43,7 +41,6 @@ final class ModelCacheUnloadBufManager {
     private static final String UNLOAD_BUFFER_CACHE_KEY = "___UNLOADBUF";
 
     private final ConcurrentLinkedHashMap<String, CacheEntry<?>> runtimeCache;
-    private final ExecutorService evictionTaskThread;
 
     // The "permanent" cache entry used as a placeholder for
     // mem taken by in-progress model unloadings (which are
@@ -51,10 +48,15 @@ final class ModelCacheUnloadBufManager {
     // null => explicit unloading isn't enabled
     private final CacheEntry<?> UNLOAD_BUFF;
 
+    // We share cache's internal eviction lock which guards any mutations that
+    // affect total sizing as well as eviction callbacks
+    private final Lock cacheLock;
+    private final Condition cacheLockCondition;
+
     // Amount of space in the cache to reserve for unloads
     private final int unloadsReservedSizeUnits;
-    // This is incremented/decremented based on unloading activity
-    // *only* from within UNLOAD_BUFF object monitor (lock)
+    // This is incremented/decremented based on unloading activity,
+    // guarded by cacheLock
     private int totalUnloadingWeight;
 
     // The amount of space occupied by the unload buffer cache entry
@@ -65,14 +67,13 @@ final class ModelCacheUnloadBufManager {
 
     // Total weighted cache size of loaded/loading models excluding the unload buffer.
     // It basically tracks (runtimeCache.weightedSize() - UNLOAD_BUFF.getWeight()),
-    // but is always accessed from within UNLOAD_BUFF object monitor (lock)
-    // in concert with totalUnloadingWeight updates.
+    // but is accessed only under cacheLock in concert with totalUnloadingWeight updates.
     private long totalModelCacheOccupancy;
 
     // This tracks when we have overshot allocated cache size, which can happen if
     // "actual size" of model determined post-loading is much larger than the
     // predicted size or (unusual) when inserting the 1-unit placeholder for a new
-    // model. Accessed only from within UNLOAD_BUFF object monitor (lock)
+    // model. Guarded by cacheLock.
     private int cacheDeficit;
 
 
@@ -80,9 +81,10 @@ final class ModelCacheUnloadBufManager {
         int unloadsReservedSizeUnits) {
 
         this.runtimeCache = cache;
-        this.evictionTaskThread = mm.evictionTaskThread;
         this.unloadsReservedSizeUnits = unloadsReservedSizeUnits;
         this.UNLOAD_BUFF = mm.newInternalCacheEntry(UNLOAD_BUFFER_CACHE_KEY, unloadsReservedSizeUnits);
+        this.cacheLock = cache.getEvictionLock();
+        this.cacheLockCondition = cacheLock.newCondition();
     }
 
     long getAdjustedCacheCapacity() {
@@ -118,15 +120,18 @@ final class ModelCacheUnloadBufManager {
      */
     CacheEntry<?> insertNewEntry(String modelId, CacheEntry<?> ce, long lastUsedTime) {
         final int weight = ce.getWeight(); // weight here should be INSERTION_WEIGHT == 1
-        synchronized (UNLOAD_BUFF) {
+        cacheLock.lock();
+        try {
             adjustAggregateUnloadingWeight(-weight);
             CacheEntry<?> existCe = runtimeCache.putIfAbsent(modelId, ce, lastUsedTime);
             if (existCe == null) {
-                totalModelCacheOccupancy += weight; // insert succeeded
+                adjustTotalModelCacheOccupancy(weight); // insert succeeded
             } else {
                 adjustAggregateUnloadingWeight(weight); // failed - pay back right away
             }
             return existCe;
+        } finally {
+            cacheLock.unlock();
         }
     }
 
@@ -137,22 +142,28 @@ final class ModelCacheUnloadBufManager {
      */
     void adjustNewEntrySpaceRequest(int increase, CacheEntry<?> entry, boolean weakPrediction) {
         final int newWeight = entry.getWeight() + increase;
-        synchronized (UNLOAD_BUFF) {
+        cacheLock.lock();
+        try {
             // Reduce unload buffer allocation temporarily to prevent
             // cascading evictions. We block-wait until there is
             // cache space to increase this again (as unloads complete)
             // prior to the load actually starting
-            totalModelCacheOccupancy += increase;
+            adjustTotalModelCacheOccupancy(increase);
             adjustAggregateUnloadingWeight(-increase);
             entry.updateWeight(weakPrediction ? -(newWeight) : newWeight);
+        } finally {
+            cacheLock.unlock();
         }
     }
 
     void cancelSpaceRequestForNewEntry(CacheEntry<?> entry) {
-        synchronized (UNLOAD_BUFF) {
+        cacheLock.lock();
+        try {
             int weight = entry.getWeight();
-            totalModelCacheOccupancy -= weight;
+            adjustTotalModelCacheOccupancy(-weight);
             adjustAggregateUnloadingWeight(weight);
+        } finally {
+            cacheLock.unlock();
         }
     }
 
@@ -170,21 +181,17 @@ final class ModelCacheUnloadBufManager {
     boolean waitForSpaceToLoad(int required, BooleanSupplier condition, long deadlineNanos)
         throws InterruptedException {
 
-        synchronized (UNLOAD_BUFF) {
+        cacheLock.lock();
+        try {
             while (!condition.getAsBoolean() && !cacheSpaceIsReady(required)) {
-                long toWaitMs = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - nanoTime());
-                if (toWaitMs <= 0) {
+                long toWaitNanos = deadlineNanos - nanoTime();
+                if (toWaitNanos <= 0) {
                     return false;
                 }
-                UNLOAD_BUFF.wait(toWaitMs); // throws InterruptedException
+                cacheLockCondition.awaitNanos(toWaitNanos); // throws InterruptedException
             }
-        }
-        // Ensure evictions triggered from prior weight adjustments have been processed, so that
-        // we properly account for the increased unload buffer weight in cacheSpaceIsReady()
-        try {
-            evictionTaskThread.submit(Runnables.doNothing()).get();
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e.getCause()); // should not happen
+        } finally {
+            cacheLock.unlock();
         }
         return true;
     }
@@ -196,11 +203,14 @@ final class ModelCacheUnloadBufManager {
      * @return true if claim was successful, false otherwise
      */
     boolean claimRequestedSpaceIfReady(int required) {
-        synchronized (UNLOAD_BUFF) {
+        cacheLock.lock();
+        try {
             if (cacheSpaceIsReady(required)) {
                 adjustAggregateUnloadingWeight(required);
                 return true;
             }
+        } finally {
+          cacheLock.unlock();
         }
         return false;
     }
@@ -215,7 +225,8 @@ final class ModelCacheUnloadBufManager {
      */
     void adjustWeightAfterLoad(final int delta, CacheEntry<?> entry) {
         if (delta == 0) return;
-        synchronized (UNLOAD_BUFF) {
+        cacheLock.lock();
+        try {
             if (delta > 0) {
                 final int deficit = delta - cacheRemaining();
                 if (deficit > 0) {
@@ -226,18 +237,21 @@ final class ModelCacheUnloadBufManager {
                         + " (" + mb(cacheDeficit * UNIT_SIZE) + ")");
                 }
             }
-            totalModelCacheOccupancy += delta;
+            adjustTotalModelCacheOccupancy(delta);
             entry.updateWeight(entry.getWeight() + delta);
             if (delta < 0) {
                 payDownDeficitAndNotifyWaiters(-delta, false, true);
             }
+        } finally {
+          cacheLock.unlock();
         }
     }
 
     // Safe insert which avoids cascading eviction, makes use of cacheDeficit field if needed
     CacheEntry<?> insertFailedPlaceholderEntry(String modelId, CacheEntry<?> ce, long lastUsedTime) {
         final int weight = ce.getWeight(); // weight here should be INSERTION_WEIGHT == 1
-        synchronized (UNLOAD_BUFF) {
+        cacheLock.lock();
+        try {
             final int deficit = weight - cacheRemaining();
             if (deficit > 0) {
                 adjustAggregateUnloadingWeight(-deficit);
@@ -245,7 +259,7 @@ final class ModelCacheUnloadBufManager {
             CacheEntry<?> existCe = runtimeCache.putIfAbsent(modelId, ce, lastUsedTime);
             if (existCe == null) {
                 // insert succeeded
-                totalModelCacheOccupancy += weight;
+                adjustTotalModelCacheOccupancy(weight);
                 if (deficit > 0) {
                     cacheDeficit += deficit;
                     logger.warn("Memory over-allocation due to cache placeholder entry insertion."
@@ -256,6 +270,8 @@ final class ModelCacheUnloadBufManager {
                 adjustAggregateUnloadingWeight(deficit); // pay back right away
             }
             return existCe;
+        } finally {
+            cacheLock.unlock();
         }
     }
 
@@ -263,16 +279,20 @@ final class ModelCacheUnloadBufManager {
 
     void initiateUnload(int weight) {
         assert weight > 0;
-        synchronized (UNLOAD_BUFF) {
-            totalModelCacheOccupancy -= weight;
+        cacheLock.lock();
+        try {
+            adjustTotalModelCacheOccupancy(-weight);
             adjustAggregateUnloadingWeight(weight);
+        } finally {
+            cacheLock.unlock();
         }
     }
 
     void unloadComplete(int weight, boolean success, String modelId) {
         assert weight > 0;
         long capacity, newCapacity;
-        synchronized (UNLOAD_BUFF) {
+        cacheLock.lock();
+        try {
             if (success) {
                 payDownDeficitAndNotifyWaiters(weight, true, true);
                 return;
@@ -282,6 +302,8 @@ final class ModelCacheUnloadBufManager {
             newCapacity = Math.max(1L, capacity - weight);
             adjustAggregateUnloadingWeight(-weight);
             runtimeCache.setCapacity(newCapacity);
+        } finally {
+            cacheLock.unlock();
         }
         logger.warn("Failed unload of model " + modelId + " resulted in permanent capacity reduction of "
                 + weight + " units (" + mb(weight * UNIT_SIZE) + ") from " + capacity + " to "
@@ -289,9 +311,12 @@ final class ModelCacheUnloadBufManager {
     }
 
     void discardFailedEntry(int weight) {
-        synchronized (UNLOAD_BUFF) {
-            totalModelCacheOccupancy -= weight;
+        cacheLock.lock();
+        try {
+            adjustTotalModelCacheOccupancy(-weight);
             payDownDeficitAndNotifyWaiters(weight, false, true);
+        } finally {
+            cacheLock.unlock();
         }
     }
 
@@ -302,7 +327,7 @@ final class ModelCacheUnloadBufManager {
         return (int) Math.min(runtimeCache.capacity() - runtimeCache.weightedSize(), Integer.MAX_VALUE);
     }
 
-    @GuardedBy("UNLOAD_BUFF")
+    @GuardedBy("cacheLock")
     private void payDownDeficitAndNotifyWaiters(int weight, boolean releaseFromUnloadingWeight, boolean notify) {
         assert weight > 0;
         int reduction = Math.min(weight, cacheDeficit);
@@ -316,11 +341,16 @@ final class ModelCacheUnloadBufManager {
         adjustAggregateUnloadingWeight(releaseFromUnloadingWeight ? -weight : reduction);
         // If there is net freed space after paying any deficit, notifiy threads that may be waiting for that space.
         if (notify && weight > 0) {
-            UNLOAD_BUFF.notifyAll();
+            cacheLockCondition.signalAll();
         }
     }
 
-    @GuardedBy("UNLOAD_BUFF")
+    @GuardedBy("cacheLock")
+    private void adjustTotalModelCacheOccupancy(int delta) {
+        totalModelCacheOccupancy += delta;
+    }
+
+    @GuardedBy("cacheLock")
     private void adjustAggregateUnloadingWeight(int delta) {
         if (delta == 0) return;
         int newWeight = totalUnloadingWeight += delta;
@@ -340,7 +370,7 @@ final class ModelCacheUnloadBufManager {
         UNLOAD_BUFF.updateWeight(newWeight);
     }
 
-    @GuardedBy("UNLOAD_BUFF")
+    @GuardedBy("cacheLock")
     private boolean cacheSpaceIsReady(int required) {
         int newTuw = totalUnloadingWeight + required;
         if (newTuw <= unloadsReservedSizeUnits) {
