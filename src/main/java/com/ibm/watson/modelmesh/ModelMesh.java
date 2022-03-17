@@ -31,15 +31,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.ObjectArrays;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.AbstractFuture;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.ListenableFutureTask;
-import com.google.common.util.concurrent.ListeningScheduledExecutorService;
-import com.google.common.util.concurrent.MoreExecutors;
-import com.google.common.util.concurrent.UncheckedExecutionException;
-import com.google.common.util.concurrent.Uninterruptibles;
+import com.google.common.util.concurrent.*;
 import com.googlecode.concurrentlinkedhashmap.Weigher;
 import com.ibm.etcd.client.FutureListener;
 import com.ibm.watson.kvutils.DynamicConfig;
@@ -79,6 +71,7 @@ import com.ibm.watson.modelmesh.thrift.ModelNotFoundException;
 import com.ibm.watson.modelmesh.thrift.ModelNotHereException;
 import com.ibm.watson.modelmesh.thrift.Status;
 import com.ibm.watson.modelmesh.thrift.StatusInfo;
+import io.grpc.Context;
 import io.grpc.Status.Code;
 import io.grpc.StatusException;
 import io.grpc.StatusRuntimeException;
@@ -129,23 +122,7 @@ import java.util.SortedSet;
 import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Phaser;
-import java.util.concurrent.PriorityBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
@@ -160,6 +137,7 @@ import java.util.stream.Stream;
 
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static com.ibm.watson.kvutils.KVTable.EventType.*;
+import static com.ibm.watson.modelmesh.GrpcSupport.newInterruptingListener;
 import static com.ibm.watson.modelmesh.ModelLoader.UNIT_SIZE;
 import static com.ibm.watson.modelmesh.ModelMeshEnvVars.*;
 import static com.ibm.watson.modelmesh.SidecarModelMesh.trimStack;
@@ -317,7 +295,7 @@ public abstract class ModelMesh extends ThriftService
     // size of threadpool used for loading models
     protected /*final*/ int loadingThreads;
 
-    protected static final int TASK_THREADS = 10;
+    protected static final int TASK_THREADS = 8, ASYNC_REQ_THREADS = 4;
 
     // conservative global default average model size - in 8KiB units
     private /*final*/ int defaultModelSizeUnits;
@@ -433,6 +411,9 @@ public abstract class ModelMesh extends ThriftService
 
     protected final ListeningScheduledExecutorService taskPool;
 
+    // these are used for "internal" async ensureLoaded requests
+    protected final ListeningExecutorService asyncReqThreads;
+
     private final boolean isExternal = this instanceof SidecarModelMesh;
 
     protected /*final*/ boolean limitModelConcurrency;
@@ -502,6 +483,9 @@ public abstract class ModelMesh extends ThriftService
                 ThreadPoolHelper.threadFactory("mm-task-thread-%d"));
         stpe.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
         taskPool = MoreExecutors.listeningDecorator(stpe);
+
+        asyncReqThreads = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(
+                ASYNC_REQ_THREADS, ThreadPoolHelper.threadFactory("mm-intreq-thread-%d")));
     }
 
     static final Pattern VERSION_PATT = Pattern.compile(".+-(\\d{8})-(\\d+)");
@@ -2834,15 +2818,17 @@ public abstract class ModelMesh extends ThriftService
                 ClusterStats stats = typeSetStats(ce.modelInfo.getServiceType());
                 if (stats.totalCapacity > 0 && stats.instanceCount > 1
                     && ((20L * stats.totalFree) / stats.totalCapacity) >= 1) {
-                    try {
-                        StatusInfo si = ensureLoadedElsewhere(key, lastUsed, ce.getWeight());
-                        if (si.getStatus() == Status.LOADING) {
-                            logger.info("Triggered load of evicted model "
-                                + key + " elsewhere (cluster isn't full)");
+                    asyncReqThreads.execute(() -> {
+                        try {
+                            StatusInfo si = ensureLoadedElsewhere(key, lastUsed, ce.getWeight());
+                            if (si.getStatus() == Status.LOADING) {
+                                logger.info("Triggered load of evicted model "
+                                        + key + " elsewhere (cluster isn't full)");
+                            }
+                        } catch (Exception e) {
+                            logger.warn("Exception attempting to load evicted model " + key + " elsewhere");
                         }
-                    } catch (Exception e) {
-                        logger.warn("Exception attempting to load evicted model " + key + " elsewhere");
-                    }
+                    });
                 }
             }
         });
@@ -3241,7 +3227,7 @@ public abstract class ModelMesh extends ThriftService
     // these are the possible values for the tas.internal context parameter
     // it won't be set on requests from outside of the cluster, and will
     // always be set to one of the below values for requests inside the cluster
-    static final String HIT_ONLY = "hit_only";
+    static final String HIT_ONLY = "hit_only", INTERNAL_REQ = "internal";
     static final String LOAD_LOCAL_ONLY = "load_local_only", FORCE_LOCAL_LOAD = "force_local_load";
 
     static final Splitter COMMA_SPLIT = Splitter.on(',');
@@ -3352,17 +3338,32 @@ public abstract class ModelMesh extends ThriftService
         }
 
         final String tasInternal = contextMap.get(TAS_INTERNAL_CXT_KEY);
+        // Set the external request flag if it's not a tasInternal call or if
+        // tasInternal == INTERNAL_REQ. The latter is a new ensureLoaded
+        // invocation originating from within the cluster.
+        final boolean externalReq;
+        boolean local = false;
+        final String hopType;
+        if (tasInternal == null) {
+            externalReq = true;
+            hopType = "ex"; // "ex-ternal"
+        } else if (INTERNAL_REQ.equals(tasInternal)) {
+            externalReq = true;
+            hopType = "in"; // "in-ternal"
+        } else if (HIT_ONLY.equals(tasInternal)) {
+            externalReq = false;
+            local = true;
+            hopType = "ho"; // "hit-only"
+        } else {
+            externalReq = false;
+            hopType = "ll"; // "load-local"
+        }
 
-        long methodStartNanos = !isExternal && tasInternal == null && method != null
-                ? nanoTime() : 0L; // just for non-grpc api metric case
+        // just for non-grpc api metric case
+        long methodStartNanos = !isExternal && externalReq && method != null ? nanoTime() : 0L;
         Code metricStatusCode = Code.OK;
 
-        final boolean local = HIT_ONLY.equals(tasInternal);
-        // set the external request flag if it's not a tasInternal call
-        final boolean externalReq = tasInternal == null;
-
         final Thread curThread = Thread.currentThread();
-        String hopType = tasInternal == null ? "ex" : (local ? "ho" : "ll"); // "ex-ternal", "hit-only", "load-local"
         final String threadNameBefore = setThreadName(curThread, "invoke-" + hopType + '-' + modelId);
         ModelRecord mr = null;
         try {
@@ -3894,9 +3895,9 @@ public abstract class ModelMesh extends ThriftService
                 if (cacheMissTlSet) cacheMissExcludeTl.set(null);
             }
 
-        } catch (InterruptedException e) {
+        } catch (InterruptedException ie) {
             metricStatusCode = Code.CANCELLED;
-            throw newInternalException("Interrupted while waiting for load of model " + modelId, e);
+            throw newInternalInterruptedException(ie, "load of model " + modelId);
         } catch (Exception e) {
             metricStatusCode = methodStartNanos > 0L && isInterruption(e) ? Code.CANCELLED : Code.UNKNOWN;
             if (method == null && externalReq && e instanceof ModelLoadException) {
@@ -4154,10 +4155,9 @@ public abstract class ModelMesh extends ThriftService
                        || t instanceof TProtocolException
                        || t instanceof TApplicationException
                        || t instanceof RuntimeException) {
-                if (isInterruption(t)) {
-                    Throwables.throwIfInstanceOf(t, RuntimeException.class);
-                    Throwables.throwIfInstanceOf(t, TException.class);
-                    throw new RuntimeException(t);
+                Exception interrupted = getInterruptionCause(t);
+                if (interrupted != null) {
+                    throw newInternalInterruptedException(interrupted, "remote invocation for model " + modelId);
                 }
                 logger.error("Remote invocation failed for model " + modelId, t);
                 return true;
@@ -6230,9 +6230,9 @@ public abstract class ModelMesh extends ThriftService
     protected void ensureLoadedInternalAsync(String modelId, long lastUsed, int weight, List<String> toExclude,
             int chainedLoadCount) {
         // dispatch to another thread to actually invoke ensureLoaded
-        taskPool.execute(() -> {
+        asyncReqThreads.execute(() -> {
             try {
-                ensureLoadedInternal(modelId, lastUsed, weight, toExclude, chainedLoadCount);
+                ensureLoadedInternal(modelId, lastUsed, weight, toExclude, chainedLoadCount, false);
             } catch (Exception e) {
                 logger.warn("Error triggering/ensuring additional load of model " + modelId, e);
             }
@@ -6570,14 +6570,9 @@ public abstract class ModelMesh extends ThriftService
                             final String fModelId = modelToLoad.modelId;
                             phaser.register();
                             allCandidates.set(modelToLoad.index, null); // null out loaded model
-                            taskPool.execute(() -> {
+                            asyncReqThreads.execute(() -> {
                                 try {
-                                    ThreadContext.removeCurrentContext(); // ensure context is clear
-                                    // add flag to ensure we aren't specially favoured
-                                    // when placing the proactive loads
-                                    ThreadContext.addContextEntry(UNBALANCED_KEY, "true");
-                                    ensureLoaded(fModelId, timestamp, null, false, false);
-                                } catch (ModelNotFoundException mnfe) { // no problem, ignore
+                                    ensureLoadedInternal(fModelId, timestamp, 0, null, 0, false);
                                 } catch (Exception e) {
                                     logger.warn("Exception from proactive load of model " + fModelId, e);
                                 } finally {
@@ -6741,7 +6736,7 @@ public abstract class ModelMesh extends ThriftService
      * regardless of whether it's already loaded in this instance.
      */
     protected StatusInfo ensureLoadedElsewhere(String modelId, long lastUsedTime, int weight) throws InternalException {
-        return ensureLoadedInternal(modelId, lastUsedTime, weight, excludeThisInstance, 0);
+        return ensureLoadedInternal(modelId, lastUsedTime, weight, excludeThisInstance, 0, false);
     }
 
     /*
@@ -6762,27 +6757,32 @@ public abstract class ModelMesh extends ThriftService
                 toExclude.add(instanceId);
             }
         }
-        return ensureLoadedInternal(modelId, lastUsedTime, weight, toExclude, 0);
+        return ensureLoadedInternal(modelId, lastUsedTime, weight, toExclude, 0, false);
     }
 
     protected StatusInfo ensureLoadedInternal(String modelId, long lastUsedTime, int weight, List<String> toExclude,
-            int chainedLoadCount) throws InternalException {
-        try {
-            ThreadContext.removeCurrentContext(); // ensure context is clear
-            // inform other instances of the weight for more accurate initial sizing
-            if (weight > INSERTION_WEIGHT) {
-                ThreadContext.addContextEntry(KNOWN_SIZE_CXT_KEY, String.valueOf(weight));
-            }
-            if (chainedLoadCount > 0) {
-                ThreadContext.addContextEntry(CHAINED_LOAD_COUNT_KEY, String.valueOf(chainedLoadCount));
-            }
-            if (toExclude == null || !toExclude.contains(instanceId)) {
-                // add flag to ensure we aren't specially favoured
-                ThreadContext.addContextEntry(UNBALANCED_KEY, "true");
-            }
-            return ensureLoaded(modelId, lastUsedTime, toExclude, false, true);
+            int chainedLoadCount, boolean sync) throws InternalException {
+        ThreadContext.removeCurrentContext(); // ensure context is clear
+        // inform other instances of the weight for more accurate initial sizing
+        if (weight > INSERTION_WEIGHT) {
+            ThreadContext.addContextEntry(KNOWN_SIZE_CXT_KEY, String.valueOf(weight));
+        }
+        if (chainedLoadCount > 0) {
+            ThreadContext.addContextEntry(CHAINED_LOAD_COUNT_KEY, String.valueOf(chainedLoadCount));
+        }
+        if (toExclude == null || !toExclude.contains(instanceId)) {
+            // add flag to ensure we aren't specially favoured
+            ThreadContext.addContextEntry(UNBALANCED_KEY, "true");
+        }
+        ThreadContext.addContextEntry(TAS_INTERNAL_CXT_KEY, INTERNAL_REQ);
+        Context deadlineContext = Context.current().withDeadlineAfter(3L + chainedLoadCount, SECONDS, taskPool);
+        Context prevContext = deadlineContext.attach();
+        try (GrpcSupport.InterruptingListener cancelListener = newInterruptingListener()) {
+            return ensureLoaded(modelId, lastUsedTime, toExclude, sync, true);
         } catch (ModelNotFoundException mnfe) {
             return SI_NOT_FOUND;
+        } finally {
+            deadlineContext.detach(prevContext);
         }
     }
 
@@ -6904,12 +6904,11 @@ public abstract class ModelMesh extends ThriftService
                             ListenableFuture<?> waiter = taskPool.submit(() -> {
                                 try {
                                     //TODO TBD poll or blocking approach
-                                    ThreadContext.removeCurrentContext(); // Clear context to ensure we don't load locally
                                     //TODO this currently won't wait for *additional* copies to finish loading if there
                                     // already other fully-loaded copies. We might want to tweak this to do so for models
                                     // which have been used within the last small window of time (e.g. ~3x expected loading time),
                                     // to ensure the remaining copies aren't temporarily over-burdened
-                                    StatusInfo status = ensureLoaded(modelId, lastUsed, excludeThis, true, false);
+                                    StatusInfo status = ensureLoadedInternal(modelId, lastUsed, 0, excludeThis, 0, true);
                                     if (status.getStatus() == Status.LOADING_FAILED) {
                                         logger.warn("Model failed to load elsewhere: " + modelId
                                                 + (status.getErrorMessages() != null ? (", "
@@ -7001,16 +7000,18 @@ public abstract class ModelMesh extends ThriftService
         try {
             loadingPool.awaitTermination(3, SECONDS);
         } catch (InterruptedException e) {
-            logger.warn("Interrupted while waiting for taskpool termination", e);
+            logger.warn("Interrupted while waiting for loadingpool termination", e);
             Thread.currentThread().interrupt();
         }
 
+        asyncReqThreads.shutdown();
         taskPool.shutdown();
         closeQuietly(runtimeClient, cacheMissClient, directClient);
 
         try {
             // might be processing model deregister tasks
             taskPool.awaitTermination(10, SECONDS);
+            taskPool.awaitTermination(5, SECONDS);
         } catch (InterruptedException e) {
             logger.warn("Interrupted while waiting for taskpool termination", e);
             Thread.currentThread().interrupt();
@@ -7065,15 +7066,19 @@ public abstract class ModelMesh extends ThriftService
         return String.format("%.3fGiB", (float) bytes / (float) Gi);
     }
 
-    static boolean isInterruption(Throwable t) {
+    static Exception getInterruptionCause(Throwable t) {
         while (t != null) {
             if (t instanceof InterruptedException || t instanceof InterruptedIOException
-                || t instanceof ClosedByInterruptException) {
-                return true;
+                    || t instanceof ClosedByInterruptException) {
+                return (Exception) t;
             }
             t = t.getCause();
         }
-        return false;
+        return null;
+    }
+
+    static boolean isInterruption(Throwable t) {
+        return getInterruptionCause(t) != null;
     }
 
     static boolean isTimeout(Throwable t) {
@@ -7093,6 +7098,16 @@ public abstract class ModelMesh extends ThriftService
         if (cause != null) ie.initCause(cause);
         ie.setCauseStacktrace(Throwables.getStackTraceAsString(ie));
         logger.error(message != null ? message : "Unexpected exception", cause);
+        return ie;
+    }
+
+    protected static InternalException newInternalInterruptedException(Exception cause, String task) {
+        InternalException ie = new InternalException();
+        ie.setMessage("Request interrupted due to " + GrpcSupport.cancellationReason(Context.current())
+                + " while waiting for " + task);
+        if (cause != null) ie.initCause(cause);
+        ie.setCauseStacktrace(Throwables.getStackTraceAsString(ie));
+        logger.warn(ie.getMessage(), cause);
         return ie;
     }
 
