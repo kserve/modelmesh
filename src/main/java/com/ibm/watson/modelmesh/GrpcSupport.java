@@ -76,6 +76,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static io.grpc.Metadata.ASCII_STRING_MARSHALLER;
@@ -167,6 +169,26 @@ public final class GrpcSupport {
         return true;
     }
 
+    static CharSequence cancellationReason(Context context) {
+        Deadline dl = context.getDeadline();
+        StringBuilder message = new StringBuilder(64);
+        if (dl == null) {
+            message.append("cancellation");
+        } else {
+            long msRemaining = dl.timeRemaining(TimeUnit.MILLISECONDS);
+            if (msRemaining <= 0) {
+                message.append("deadline expiration");
+            } else {
+                message.append("cancellation, with ").append(msRemaining).append("ms until deadline");
+            }
+        }
+        Throwable cause = context.cancellationCause();
+        if (cause != null && !(cause instanceof TimeoutException)) {
+            message.append(" (cause = ").append(cause).append(")");
+        }
+        return message;
+    }
+
     static final class InterruptingListener implements CancellationListener, AutoCloseable {
         private Thread thread;
 
@@ -178,12 +200,8 @@ public final class GrpcSupport {
         public synchronized void cancelled(Context context) {
             Thread t = thread;
             if (t != null) {
-                Deadline dl = context.getDeadline();
-                String dlStr = dl == null ? "no deadline" :
-                        (dl.isExpired() ? "deadline expired" : "deadline not expired");
                 logger.info("Interrupting request thread " + t.getName()
-                            + " due to gRPC Context cancellation or deadline expiry: "
-                            + context.cancellationCause() + " (" + dlStr + ")");
+                        + " due to " + cancellationReason(context));
                 t.interrupt();
             }
         }

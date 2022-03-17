@@ -150,10 +150,8 @@ public final class StaticModelRegistration {
             logger.info("Waiting for " + waitFor.size() + " models to be loaded before proceeding: " + waitFor);
             long oneYearAgo = System.currentTimeMillis() - TimeUnit.MILLISECONDS.convert(365L, TimeUnit.DAYS);
             for (String modelId : waitFor) {
-                ThreadContext.removeCurrentContext();
-                ThreadContext.addContextEntry(ModelMesh.UNBALANCED_KEY, "true");
                 // Use very old timestamp which will effectively leave the existing one unchanged
-                StatusInfo si = modelMesh.ensureLoaded(modelId, oneYearAgo, null, true, true);
+                StatusInfo si = modelMesh.ensureLoadedInternal(modelId, oneYearAgo, 0, null, 0, true);
                 if (si.getStatus() == Status.LOADING_FAILED) {
                     logger.error("Model " + modelId + " has status " + Status.LOADING_FAILED + ": "
                                  + si.getErrorMessages() + ", aborting");

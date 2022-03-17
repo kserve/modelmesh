@@ -708,11 +708,8 @@ public final class VModelManager implements AutoCloseable {
                         lastUsed = currentTimeMillis() - ModelMesh.LASTUSED_AGE_ON_ADD_MS;
                     }
 
-                    ThreadContext.removeCurrentContext(); // ensure context is clear
-                    // add flag to ensure we aren't specially favoured
-                    ThreadContext.addContextEntry(ModelMesh.UNBALANCED_KEY, "true");
                     // this will block until loaded
-                    StatusInfo si = modelMesh.ensureLoaded(toId, lastUsed, null, true, true);
+                    StatusInfo si = modelMesh.ensureLoadedInternal(toId, lastUsed, 0, null, 0, true);
                     if (si == null) {
                         return; // shouldn't happen
                     }
