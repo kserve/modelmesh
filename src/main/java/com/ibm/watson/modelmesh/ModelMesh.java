@@ -99,6 +99,7 @@ import org.eclipse.collections.api.map.primitive.ObjectLongMap;
 import org.eclipse.collections.impl.factory.primitive.ObjectLongMaps;
 import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
 
+import javax.annotation.concurrent.GuardedBy;
 import java.io.File;
 import java.io.InterruptedIOException;
 import java.lang.management.ManagementFactory;
@@ -136,7 +137,6 @@ import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Phaser;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -1735,8 +1735,25 @@ public abstract class ModelMesh extends ThriftService
          */
         void updateWeight(int newWeight) {
             //TODO maybe ensure != 0
+            Lock cacheLock = runtimeCache.getEvictionLock();
+            cacheLock.lock();
+            try {
+                updateWeightLocked(newWeight);
+            } finally {
+                cacheLock.unlock();
+            }
+        }
+
+        @GuardedBy("runtimeCache.getEvictionLock()")
+        void updateWeightLocked(int newWeight) {
+            int oldWeight = this.weight;
+            if (oldWeight == newWeight) {
+                return;
+            }
             this.weight = newWeight;
-            runtimeCache.replaceQuietly(modelId, this, this);
+            if (!runtimeCache.replaceQuietly(modelId, this, this)) {
+                this.weight = oldWeight;
+            }
         }
 
         final int loaderPredictedWeight() {
@@ -1818,123 +1835,124 @@ public abstract class ModelMesh extends ThriftService
             return age(lastUnloadAttemptTime) < 600_000L; // 10 mins
         }
 
-        // this is passed as the lastUsed time to the remove method below
-        // to indicate the model is already unloaded from the runtime
-        // (so no need to call unloadModel as a removal step)
-        public static final long ALREADY_UNLOADED = 20L;
-
         public final boolean remove() {
-            return remove(false, 0L);
+            return remove(false);
         }
 
         /**
-         * abort loading. unless shutting down, the entry will also be removed
-         * from the cache
+         * Abort loading. The entry will also be removed from the cache
+         *
+         * @param alreadyUnloaded true if already unloaded (e.g. runtime reported not found)
+         */
+        public final boolean remove(final boolean alreadyUnloaded) {
+            if (state >= REMOVED) {
+                return false;
+            }
+
+            // return false immediately if not evicted and no longer in cache; removal processing
+            // will be performed by another thread that did the cache removal or eviction
+            if (unloadManager == null) {
+                return runtimeCache.remove(modelId, this) && doRemove(false, -1, alreadyUnloaded);
+            }
+            int removalWeight = unloadManager.removeEntry(this);
+            return removalWeight != -1 && doRemove(false, removalWeight, alreadyUnloaded);
+        }
+
+        /**
+         * Called after an entry is removed or evicted. unloadManager.entryRemoved or removeEntry must have
+         * first been called.
          *
          * @param evicted  if already evicted from cache
-         * @param lastUsed lastUsed time, 0L for unknown or none,
-         *                 ALREADY_UNLOADED if already unloaded (e.g. runtime reported not found)
+         * @param removalWeight weight upon removal, only required if unloadManager != null
+         * @param alreadyUnloaded true if already unloaded (e.g. runtime reported not found)
+         * @return
          */
-        public final boolean remove(final boolean evicted, long lastUsed) {
+        final synchronized boolean doRemove(final boolean evicted,
+                                            final int removalWeight,
+                                            final boolean alreadyUnloaded) {
             int stateNow = state;
             if (stateNow >= REMOVED) {
                 return false;
             }
 
-            if (lastUsed <= 0L) {
-                lastUsed = stateNow <= LOADING || evicted ? 10L : runtimeCache.getLastUsedTime(modelId);
+            // important that this state change is prior to the cancel() below
+            // since it may re-enter the lock in the complete() method
+            state = REMOVED;
+
+            if (stateNow == NEW) {
+                // wake up waitWhileNew() method
+                notifyAll();
             }
 
-            if (!evicted && (lastUsed <= 0L || !runtimeCache.remove(modelId, this))) {
-                // no longer in cache; removal processing will be performed by another thread that
-                // did the cache removal or eviction
-                return false;
-            }
+            long unloadDelayMs = -1L;
+            if (stateNow <= LOADING) {
+                // model is not yet loaded, no need to unload
 
-            // Deadlock here is avoided since we know this won't be called in a cache eviction callback for
-            // the same cache entry (since either we are already in an eviction callback, or we just removed it from the cache)
-            synchronized(this) {
-                stateNow = state;
-                if (stateNow >= REMOVED) {
-                    return false;
-                }
+                // abort - notify waiters
+                setException(new ModelNotHereException(instanceId, modelId));
 
-                // important that this state change is prior to the cancel() below
-                // since it may re-enter the lock in the complete() method
-                state = REMOVED;
-
-                if (stateNow == NEW) {
-                    // wake up waitWhileNew() method
-                    notifyAll();
-                }
-
-                long unloadDelayMs = -1L;
-                if (stateNow <= LOADING) {
-                    // model is not yet loaded, no need to unload
-
-                    // abort - notify waiters
-                    setException(new ModelNotHereException(instanceId, modelId));
-
-                    if (stateNow == QUEUED) {
-                        loadingCount.decrementAndGet();
-                    } else if (stateNow == LOADING || stateNow == WAITING) {
-                        // cancel the in-progress loading
-                        ListenableFuture<Void> lfut = loadFuture;
-                        if (lfut != null) {
-                            logger.info("Cancelling in-progress loading of model "
+                if (stateNow == QUEUED) {
+                    loadingCount.decrementAndGet();
+                } else if (stateNow == LOADING || stateNow == WAITING) {
+                    // cancel the in-progress loading
+                    ListenableFuture<Void> lfut = loadFuture;
+                    if (lfut != null) {
+                        logger.info("Cancelling in-progress loading of model "
                                 + modelId + " due to removal (state was " + ModelMesh.ceStateString(stateNow) + ")");
-                            lfut.cancel(true);
-                        }
+                        lfut.cancel(true);
                     }
-                    if (unloadManager != null) {
-                        if (stateNow == NEW || stateNow == QUEUED || stateNow == WAITING) {
-                            unloadManager.cancelSpaceRequestForNewEntry(this);
-                        } else if (stateNow == LOADING) {
-                            // this delay is to add a buffer between
-                            // cancelling the in-progress load and
-                            // initiating the subsequent unload
-                            unloadDelayMs = evicted ? 500L : 3000L;
-                        }
+                }
+                if (unloadManager != null) {
+                    if (stateNow == NEW || stateNow == QUEUED || stateNow == WAITING) {
+                        // no more unload accounting to perform (already reverted by unloadManager.entryRemoved)
+                        return true;
                     }
-                } else if (stateNow <= ACTIVE && lastUsed != ALREADY_UNLOADED) {
-                    // state is SIZING or ACTIVE
-                    if (stateNow == SIZING) {
-                        // cancel the in-progress sizing
-                        ListenableFuture<Void> lfut = loadFuture;
-                        if (lfut != null && lfut.cancel(true)) {
-                            logger.info("Cancelled in-progress sizing of model "
+                    if (stateNow == LOADING) {
+                        // this delay is to add a buffer between
+                        // cancelling the in-progress load and
+                        // initiating the subsequent unload
+                        unloadDelayMs = evicted ? 500L : 3000L;
+                    }
+                }
+            } else if (stateNow <= ACTIVE && !alreadyUnloaded) {
+                // state is SIZING or ACTIVE
+                if (stateNow == SIZING) {
+                    // cancel the in-progress sizing
+                    ListenableFuture<Void> lfut = loadFuture;
+                    if (lfut != null && lfut.cancel(true)) {
+                        logger.info("Cancelled in-progress sizing of model "
                                 + modelId + " due to removal (state was " + SIZING + ")");
-                        }
-                    }
-
-                    if (unloadManager != null) {
-                        // Wait 200ms prior to initial check, to avoid race with incoming requests hitting.
-                        // This still constitutes a race but the alternative is additional volatile checks
-                        // on the 99.99% runtime path which we prefer to avoid.
-                        // Give a bit more time in the sizing case to allow for the sizing request
-                        // to be cancelled.
-                        unloadDelayMs = stateNow == SIZING ? 1500L : 200L;
-                    } else {
-                        // We treat removal of active model from the cache as our
-                        // "unload" event if explicit unloading isn't enabled.
-                        // Otherwise, this gets recorded in a callback set in the
-                        // CacheEntry.unload(int) method
-                        metrics.logTimingMetricDuration(Metric.UNLOAD_MODEL_TIME, 0L, false);
-                        metrics.logCounterMetric(Metric.UNLOAD_MODEL);
                     }
                 }
-                // else will already have been unloaded
-                else if (state == FAILED && unloadManager != null) {
-                    unloadManager.discardFailedEntry(FAILED_WEIGHT);
-                }
 
-                if (unloadDelayMs >= 0L && !shuttingDown) {
-                    // here state == LOADING or ACTIVE
-                    triggerUnload(getWeight(), unloadDelayMs);
+                if (unloadManager != null) {
+                    // Wait 200ms prior to initial check, to avoid race with incoming requests hitting.
+                    // This still constitutes a race but the alternative is additional volatile checks
+                    // on the 99.99% runtime path which we prefer to avoid.
+                    // Give a bit more time in the sizing case to allow for the sizing request
+                    // to be cancelled.
+                    unloadDelayMs = stateNow == SIZING ? 1500L : 200L;
+                } else {
+                    // We treat removal of active model from the cache as our
+                    // "unload" event if explicit unloading isn't enabled.
+                    // Otherwise, this gets recorded in a callback set in the
+                    // CacheEntry.unload(int) method
+                    metrics.logTimingMetricDuration(Metric.UNLOAD_MODEL_TIME, 0L, false);
+                    metrics.logCounterMetric(Metric.UNLOAD_MODEL);
                 }
-
-                return true;
             }
+
+            if (unloadManager != null) {
+                if (unloadDelayMs < 0L) {
+                    // Unload is already done or not applicable
+                    unloadManager.unloadComplete(removalWeight, true, modelId);
+                } else if (!shuttingDown) {
+                    // here state == LOADING or ACTIVE
+                    triggerUnload(removalWeight, unloadDelayMs);
+                }
+            }
+
+            return true;
         }
 
         /**
@@ -1947,7 +1965,6 @@ public abstract class ModelMesh extends ThriftService
             if (unloadManager == null) {
                 return;
             }
-            unloadManager.initiateUnload(weight);
             long startNanos = nanoTime();
             if (initialDelayMs == 0L) {
                 unloadIfIdle(weight, 1, startNanos);
@@ -2792,12 +2809,17 @@ public abstract class ModelMesh extends ThriftService
         long now = currentTimeMillis();
 
         // Log prior to dispatch so we can see thread which triggered the eviction
-        int weight = ce.getWeight();
+        int removalWeight = ce.getWeight();
         logger.info("Eviction triggered for model " + key
-            + " (weight=" + weight + " / " + mb(weight * UNIT_SIZE) + ")");
+            + " (weight=" + removalWeight + " / " + mb(removalWeight * UNIT_SIZE) + ")");
+
+        // we hold the eviction lock here
+        if (unloadManager != null) {
+            unloadManager.entryRemoved(removalWeight);
+        }
 
         // perform deregistration and removal re-attempt on regular task thread; eviction
-        // callbacks are now performed under the cache lock so better to offload as much as possible
+        // callbacks are now performed under the cache lock
         taskPool.execute(() -> {
             // determine whether a reload should be attempted elsewhere:
             // *don't* reload if this was a cached load failure, or was
@@ -2825,6 +2847,9 @@ public abstract class ModelMesh extends ThriftService
                 metrics.logCounterMetric(Metric.EVICT_MODEL);
             }
 
+            // abort/unload model
+            ce.doRemove(true, removalWeight, false);
+
             // remove our record from registry
             deregisterModel(key, lastUsed, ce.loadTimestamp, ce.loadCompleteTimestamp);
 
@@ -2846,9 +2871,6 @@ public abstract class ModelMesh extends ThriftService
                 }
             }
         });
-
-        // abort/unload model
-        ce.remove(true, lastUsed);
     }
 
     /**
@@ -4426,7 +4448,7 @@ public abstract class ModelMesh extends ThriftService
                     // runtime unexpectedly reporting model not found - update
                     // cache and registry accordingly
                     deregisterModelAsync(ce.modelId, 0L, ce.loadTimestamp, ce.loadCompleteTimestamp);
-                    ce.remove(false, CacheEntry.ALREADY_UNLOADED);
+                    ce.remove(true);
                     logger.warn("ModelRuntime in instance " + instanceId + " returned unexpected NOT_FOUND for model "
                                 + ce.modelId + "; purging from local cache and registration");
                     te = new ModelNotHereException(instanceId, ce.modelId);
@@ -5768,7 +5790,7 @@ public abstract class ModelMesh extends ThriftService
                                     // remove it from the local cache.
                                     if (mr == null || ce.state < CacheEntry.LOADING || ce.state > CacheEntry.ACTIVE // includes failed
                                         || ce.unloadAttemptedRecently()) {
-                                        if (ce.remove(false, lastUsed)) {
+                                        if (ce.remove()) {
                                             logger.info("Janitor removed" + (failed ? " *failed*" : "") + " model "
                                                         + modelId + " from cache because not present in registry");
                                             cacheChanged = true;
@@ -6155,7 +6177,7 @@ public abstract class ModelMesh extends ThriftService
                 if (registry.conditionalSet(modelId, mr)) {
                     logger.info("Removing copy of model " + modelId + " from instance " + instanceId
                                 + " due to scale-down. Model now has " + mr.getInstanceIds().size() + " loaded copies");
-                    ce.remove(false, lastUsed);
+                    ce.remove();
                 }
                 // else no big deal, we'll try again next time around
             } catch (Exception e) {
@@ -6855,7 +6877,7 @@ public abstract class ModelMesh extends ThriftService
                             }
                             long lruTime = lruT != 0L ? lruT : runtimeCache.getLastUsedTime(modelId);
                             if (lruTime >= 0) {
-                                ce.remove(false, lruTime);
+                                ce.remove();
                             }
                             // deregister now if it's "safe" i.e. cache entry future was aborted
                             // and so can't yet be servicing any requests
