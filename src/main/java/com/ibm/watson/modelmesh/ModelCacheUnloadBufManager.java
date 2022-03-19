@@ -108,7 +108,7 @@ final class ModelCacheUnloadBufManager {
      * <p/>
      * This space "request" may subsequently be:
      * <ul>
-     *   <li>Reverted via {@link #cancelSpaceRequestForNewEntry(CacheEntry)}</li>
+     *   <li>Reverted via {@link #entryRemoved(int)}</li>
      *   <li>Increased via {@link #adjustNewEntrySpaceRequest(int, CacheEntry, boolean)}</li>
      *   <li>Waited-for and "claimed" via {@link #waitForSpaceToLoad(int, BooleanSupplier, long)}
      *       and {@link #claimRequestedSpaceIfReady(int)}</li>
@@ -150,18 +150,7 @@ final class ModelCacheUnloadBufManager {
             // prior to the load actually starting
             adjustTotalModelCacheOccupancy(increase);
             adjustAggregateUnloadingWeight(-increase);
-            entry.updateWeight(weakPrediction ? -(newWeight) : newWeight);
-        } finally {
-            cacheLock.unlock();
-        }
-    }
-
-    void cancelSpaceRequestForNewEntry(CacheEntry<?> entry) {
-        cacheLock.lock();
-        try {
-            int weight = entry.getWeight();
-            adjustTotalModelCacheOccupancy(-weight);
-            adjustAggregateUnloadingWeight(weight);
+            entry.updateWeightLocked(weakPrediction ? -(newWeight) : newWeight);
         } finally {
             cacheLock.unlock();
         }
@@ -238,7 +227,7 @@ final class ModelCacheUnloadBufManager {
                 }
             }
             adjustTotalModelCacheOccupancy(delta);
-            entry.updateWeight(entry.getWeight() + delta);
+            entry.updateWeightLocked(entry.getWeight() + delta);
             if (delta < 0) {
                 payDownDeficitAndNotifyWaiters(-delta, false, true);
             }
@@ -277,15 +266,38 @@ final class ModelCacheUnloadBufManager {
 
     // ---------- Unloading phase ------------------
 
-    void initiateUnload(int weight) {
-        assert weight > 0;
+    /**
+     * @return the entry's weight at time of removal or -1 if the cache did not contain the entry
+     */
+    int removeEntry(CacheEntry<?> entry) {
+        String modelId = entry.modelId;
+        if (runtimeCache.getQuietly(modelId) != entry) {
+            return -1;
+        }
         cacheLock.lock();
         try {
-            adjustTotalModelCacheOccupancy(-weight);
-            adjustAggregateUnloadingWeight(weight);
+            if (!runtimeCache.remove(modelId, entry)) {
+                return -1;
+            }
+            int weight = entry.getWeight();
+            entryRemoved(weight);
+            return weight;
         } finally {
             cacheLock.unlock();
         }
+    }
+
+    /**
+     * This is called "atomically" with a corresponding removal of an entry from the cache.
+     * Either by the {@link #removeEntry(CacheEntry)} method above, or in the eviction callback.
+     *
+     * @param weight
+     */
+    @GuardedBy("cacheLock")
+    void entryRemoved(int weight) {
+        assert weight > 0;
+        adjustTotalModelCacheOccupancy(-weight);
+        adjustAggregateUnloadingWeight(weight);
     }
 
     void unloadComplete(int weight, boolean success, String modelId) {
@@ -367,7 +379,7 @@ final class ModelCacheUnloadBufManager {
                     + ") is now taken up by removed models that are still unloading");
             }
         }
-        UNLOAD_BUFF.updateWeight(newWeight);
+        UNLOAD_BUFF.updateWeightLocked(newWeight);
     }
 
     @GuardedBy("cacheLock")

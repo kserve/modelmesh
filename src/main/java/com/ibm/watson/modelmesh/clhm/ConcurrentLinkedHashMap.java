@@ -441,6 +441,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
       drainStatus.lazySet(PROCESSING);
       drainBuffers();
       task.run();
+      updateOldestTime();
       if (notify) {
         notifyListener();
       }
@@ -459,6 +460,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
       try {
         drainStatus.lazySet(PROCESSING);
         drainBuffers();
+        updateOldestTime();
       } finally {
         drainStatus.lazySet(IDLE);
         evictionLock.unlock();
@@ -1096,20 +1098,21 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
 	    }
 	  }
 
-  public static long EMPTY_OLDEST_TIME = -1L;
+  public static final long EMPTY_OLDEST_TIME = -1L;
+
+  private volatile long oldestTime = EMPTY_OLDEST_TIME;
 
   /**
    * @return -1 if empty
    */
   public long oldestTime() {
-	  evictionLock.lock();
-	  try {
-		  drainBuffers();
-		  final Node<K, V> first = evictionDeque.peekFirst();
-		  return first != null ? first.getLastUsed() : EMPTY_OLDEST_TIME;
-	  } finally {
-		  evictionLock.unlock();
-	  }
+    return oldestTime;
+  }
+
+  @GuardedBy("evictionLock")
+  private void updateOldestTime() {
+    final Node<K, V> first = evictionDeque.peekFirst();
+    oldestTime = first != null ? first.getLastUsed() : EMPTY_OLDEST_TIME;
   }
 
   @Override
