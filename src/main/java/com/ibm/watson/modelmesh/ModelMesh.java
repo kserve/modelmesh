@@ -6790,14 +6790,12 @@ public abstract class ModelMesh extends ThriftService
             ThreadContext.addContextEntry(UNBALANCED_KEY, "true");
         }
         ThreadContext.addContextEntry(TAS_INTERNAL_CXT_KEY, INTERNAL_REQ);
-        Context deadlineContext = Context.current().withDeadlineAfter(3L + chainedLoadCount, SECONDS, taskPool);
-        Context prevContext = deadlineContext.attach();
-        try (GrpcSupport.InterruptingListener cancelListener = newInterruptingListener()) {
+        // Set 3 second timeout or 10 minute "safeguard" if blocking
+        ThreadContext.setDeadlineAfter(sync ? 600L : 3L + chainedLoadCount, SECONDS);
+        try {
             return ensureLoaded(modelId, lastUsedTime, toExclude, sync, true);
         } catch (ModelNotFoundException mnfe) {
             return SI_NOT_FOUND;
-        } finally {
-            deadlineContext.detach(prevContext);
         }
     }
 
