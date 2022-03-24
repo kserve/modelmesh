@@ -19,6 +19,7 @@ package com.ibm.watson.modelmesh;
 import com.ibm.watson.modelmesh.api.ModelInfo;
 import com.ibm.watson.modelmesh.api.ModelMeshGrpc;
 import com.ibm.watson.modelmesh.api.ModelMeshGrpc.ModelMeshBlockingStub;
+import com.ibm.watson.modelmesh.api.ModelRuntimeGrpc;
 import com.ibm.watson.modelmesh.api.ModelStatusInfo.ModelStatus;
 import com.ibm.watson.modelmesh.api.RegisterModelRequest;
 import com.ibm.watson.modelmesh.api.UnloadModelRequest;
@@ -27,8 +28,6 @@ import com.ibm.watson.modelmesh.example.api.ExamplePredictorGrpc;
 import com.ibm.watson.modelmesh.example.api.ExamplePredictorGrpc.ExamplePredictorBlockingStub;
 import com.ibm.watson.modelmesh.example.api.Predictor.PredictRequest;
 import com.ibm.watson.modelmesh.example.api.Predictor.PredictResponse;
-import com.ibm.watson.tas.internal.proto.ModelServerGrpc;
-import com.ibm.watson.tas.internal.proto.ModelServerGrpc.ModelServerBlockingStub;
 import io.grpc.ManagedChannel;
 import io.grpc.Status.Code;
 import io.grpc.StatusRuntimeException;
@@ -81,8 +80,7 @@ public class ModelMeshRefreshMissingModelTest extends AbstractModelMeshClusterTe
                 // Perform a sneaky out-of-band unload of the model here from
                 // the model server process, model-mesh isn't aware of
                 ManagedChannel mrChannel = NettyChannelBuilder.forAddress("localhost", 9000 + 2).usePlaintext().build();
-                // This should really be ModelRuntimeBlockingStub but the test impl uses the legacy service name
-                ModelServerBlockingStub mrStub = ModelServerGrpc.newBlockingStub(mrChannel);
+                ModelRuntimeGrpc.ModelRuntimeBlockingStub mrStub = ModelRuntimeGrpc.newBlockingStub(mrChannel);
                 // This is a blocking call, if it doesn't throw then the unload was successful.
                 try {
                     mrStub.unloadModel(UnloadModelRequest.newBuilder().setModelId("myModel").build());

@@ -17,22 +17,14 @@
 package com.ibm.watson.modelmesh.example;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.ibm.watson.modelmesh.api.LoadModelRequest;
-import com.ibm.watson.modelmesh.api.LoadModelResponse;
-import com.ibm.watson.modelmesh.api.ModelSizeRequest;
-import com.ibm.watson.modelmesh.api.ModelSizeResponse;
-import com.ibm.watson.modelmesh.api.RuntimeStatusRequest;
-import com.ibm.watson.modelmesh.api.RuntimeStatusResponse;
+import com.ibm.watson.modelmesh.api.*;
 import com.ibm.watson.modelmesh.api.RuntimeStatusResponse.MethodInfo;
 import com.ibm.watson.modelmesh.api.RuntimeStatusResponse.Status;
-import com.ibm.watson.modelmesh.api.UnloadModelRequest;
-import com.ibm.watson.modelmesh.api.UnloadModelResponse;
 import com.ibm.watson.modelmesh.example.api.ExamplePredictorGrpc.ExamplePredictorImplBase;
 import com.ibm.watson.modelmesh.example.api.Predictor.CategoryAndConfidence;
 import com.ibm.watson.modelmesh.example.api.Predictor.MultiPredictResponse;
 import com.ibm.watson.modelmesh.example.api.Predictor.PredictRequest;
 import com.ibm.watson.modelmesh.example.api.Predictor.PredictResponse;
-import com.ibm.watson.tas.internal.proto.ModelServerGrpc.ModelServerImplBase;
 import io.grpc.Context;
 import io.grpc.Contexts;
 import io.grpc.Metadata;
@@ -62,7 +54,7 @@ import static java.lang.Integer.parseInt;
 /**
  * An example Model Serving runtime for use with the model-mesh framework
  */
-public class ExampleModelRuntime extends ModelServerImplBase {
+public class ExampleModelRuntime extends ModelRuntimeGrpc.ModelRuntimeImplBase { // ModelServerImplBase {
 
     public static final boolean FAST_MODE = !"false".equals(System.getenv("FAST_MODE"));
 
