@@ -17,18 +17,18 @@
 package com.ibm.watson.modelmesh;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import com.google.common.collect.ImmutableMap;
-import com.ibm.watson.modelmesh.api.ModelInfo;
-import com.ibm.watson.modelmesh.api.ModelMeshGrpc;
+import com.ibm.watson.modelmesh.api.*;
 import com.ibm.watson.modelmesh.api.ModelMeshGrpc.ModelMeshBlockingStub;
-import com.ibm.watson.modelmesh.api.RegisterModelRequest;
-import com.ibm.watson.modelmesh.api.UnregisterModelRequest;
 import com.ibm.watson.modelmesh.example.api.ExamplePredictorGrpc;
 import com.ibm.watson.modelmesh.example.api.ExamplePredictorGrpc.ExamplePredictorBlockingStub;
 import com.ibm.watson.modelmesh.example.api.Predictor.PredictRequest;
 import com.ibm.watson.modelmesh.example.api.Predictor.PredictResponse;
 import io.grpc.ManagedChannel;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import io.grpc.netty.NettyChannelBuilder;
 import org.junit.jupiter.api.Test;
 
@@ -86,6 +86,43 @@ public class ModelMeshAllowAnyMethodTest extends AbstractModelMeshClusterTest {
             manageModels.unregisterModel(UnregisterModelRequest.newBuilder()
                     .setModelId(modelId).build());
         } finally {
+            channel.shutdown();
+        }
+    }
+
+    @Test
+    public void prohibitedManagementServiceTest() throws Exception {
+        ManagedChannel channel = NettyChannelBuilder.forAddress("localhost", 9000).usePlaintext().build();
+        try {
+            ModelMeshBlockingStub manageModels = ModelMeshGrpc.newBlockingStub(channel);
+
+            // add a model
+            String modelId = "myModel";
+            manageModels.registerModel(RegisterModelRequest.newBuilder()
+                    .setModelId(modelId).setModelInfo(ModelInfo.newBuilder().setType("ExampleType").build())
+                    .setLoadNow(true).build());
+            try {
+
+                // Attempt to call one of the internal management methods on the runtime
+                // via the inference path
+                ModelRuntimeGrpc.ModelRuntimeBlockingStub useModels = ModelRuntimeGrpc.newBlockingStub(channel);
+                UnloadModelRequest req = UnloadModelRequest.newBuilder()
+                        .setModelId(modelId)
+                        .build();
+
+                UnloadModelResponse response = forModel(useModels, modelId).unloadModel(req);
+                System.out.println("Received " + response);
+                fail("Successful call to internal management method via inference path");
+            } catch (StatusRuntimeException e) {
+                assertEquals(Status.Code.UNIMPLEMENTED, e.getStatus().getCode());
+                e.printStackTrace();
+            } finally {
+                // clean up
+                manageModels.unregisterModel(UnregisterModelRequest.newBuilder()
+                        .setModelId(modelId).build());
+            }
+        }
+        finally {
             channel.shutdown();
         }
     }

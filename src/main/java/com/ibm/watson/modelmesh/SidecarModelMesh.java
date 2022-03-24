@@ -139,6 +139,8 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
     private static final Joiner COMMA_JOIN = Joiner.on(',');
     private static final int[] EMPTY_INT_ARRAY = new int[0];
 
+    private static final String MGMT_SERVICE_PREFIX = ModelRuntimeGrpc.SERVICE_NAME + '/';
+
     private /*final*/ ExternalModelLoader modelLoader;
 
     public SidecarModelMesh() throws Exception {
@@ -382,15 +384,12 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
         }
 
         private ModelResponse callCustomMethod(String methodName, Metadata headers, ByteBuf data) throws Exception {
-            MethodDescriptor<ByteBuf, ByteBuf> md = GrpcSupport.getMethodDescriptorIfPresent(methodName);
-            final boolean mdCached = md != null;
-            // only store descriptor after successful RPC (prevent filling cache with invalid descriptors)
-            final MethodDescriptor<ByteBuf, ByteBuf> methodDescriptor = mdCached ? md
-                    : GrpcSupport.makeMethodDescriptor(methodName);
-
-            // Not setting Deadline explicitly here,
-            // relying on grpc Context for setting/propagating that
-            ClientCall<ByteBuf, ByteBuf> clientCall = servingChannel.newCall(methodDescriptor, DIRECT_EXEC_CALL_OPTS);
+            assert methodName != null;
+            // Block attempts to call the internal ModelRuntime management service via inference path
+            if (methodName.startsWith(MGMT_SERVICE_PREFIX)) {
+                throw asLeanException(Status.UNIMPLEMENTED.withDescription(
+                        "Method not found or not permitted: " + methodName));
+            }
 
             // The idInjectionPaths map is used as an allow-list. Methods containing an empty
             // int array are permitted but do not require model id injection.
@@ -411,6 +410,16 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
                     throw asLeanException(Status.INTERNAL.withDescription("model-id-bin header not found"));
                 }
             }
+
+            MethodDescriptor<ByteBuf, ByteBuf> md = GrpcSupport.getMethodDescriptorIfPresent(methodName);
+            final boolean mdCached = md != null;
+            // only store descriptor after successful RPC (prevent filling cache with invalid descriptors)
+            final MethodDescriptor<ByteBuf, ByteBuf> methodDescriptor = mdCached ? md
+                    : GrpcSupport.makeMethodDescriptor(methodName);
+
+            // Not setting Deadline explicitly here,
+            // relying on grpc Context for setting/propagating that
+            ClientCall<ByteBuf, ByteBuf> clientCall = servingChannel.newCall(methodDescriptor, DIRECT_EXEC_CALL_OPTS);
 
             SettableFuture<ModelResponse> resultFuture = SettableFuture.create();
             clientCall.start(new ClientCall.Listener<>() {
