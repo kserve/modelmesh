@@ -61,9 +61,9 @@
     <netty-version>4.1.75.Final</netty-version>
     <litelinks-version>1.7.2</litelinks-version>
     <kv-utils-version>0.5.0</kv-utils-version>
-    <etcd-java-version>0.0.19</etcd-java-version>
-    <protobuf-version>3.19.4</protobuf-version>
-    <annotation-version>9.0.60</annotation-version>
+    <etcd-java-version>0.0.20</etcd-java-version>
+    <protobuf-version>3.20.0</protobuf-version>
+    <annotation-version>9.0.62</annotation-version>
     <guava-version>31.1-jre</guava-version>
     <jackson-databind-version>2.13.2.2</jackson-databind-version>
     <gson-version>2.9.0</gson-version>
