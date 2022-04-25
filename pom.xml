@@ -73,6 +73,7 @@
     <!-- Care must be taken when updating the prometheus client lib version
          since we have some custom optimized extensions to this -->
     <prometheus-version>0.9.0</prometheus-version>
+    <bouncycastle-version>1.70</bouncycastle-version>
     <junit-version>5.8.2</junit-version>
 
     <dockerhome>${project.build.directory}/dockerhome</dockerhome>
@@ -126,7 +127,7 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.8.1</version>
         <configuration>
-          <release>11</release>
+          <release>17</release>
         </configuration>
       </plugin>
 
@@ -442,6 +443,14 @@
       <scope>provided</scope>
     </dependency>
 
+    <!-- This is currently required when using TLS-enabled
+       prometheus metrics with java15+, to be able to
+       generate a self-signed server certificate -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpkix-jdk15on</artifactId>
+      <version>${bouncycastle-version}</version>
+    </dependency>
 
     <!-- test scope dependencies -->
 
