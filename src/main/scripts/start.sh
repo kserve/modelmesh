@@ -390,6 +390,11 @@ fi
 # ensure litelinks is first on classpath (should be before libthrift)
 LL_JAR="$(ls lib/litelinks-core-*.jar)"
 
+# disable java FIPS which breaks when TLS is enabled
+if [[ "$CUSTOM_JVM_ARGS" != *-Dcom.redhat.fips=* ]]; then
+  DISABLE_FIPS_ARG="-Dcom.redhat.fips=false"
+fi
+
 # print command that's about to be run
 set -x
 
@@ -401,6 +406,7 @@ exec $JAVA_HOME/bin/java -cp "$LL_JAR:lib/*" -XX:+UnlockExperimentalVMOptions -X
  -Xlog:gc:"${MM_INSTALL_PATH}/log/vgc_${HOSTNAME}.log" ${GC_DIAG_ARGS} \
  -Dfile.encoding=UTF8 \
  -Dio.netty.tryReflectionSetAccessible=true \
+ ${DISABLE_FIPS_ARG} \
  ${JAVA_MAXDIRECT_ARG} ${NETTY_MAXDIRECT_ARG} ${NETTY_DISABLE_CHECK_ARGS} \
  ${GRPC_USE_SHARED_ALLOC_ARG} \
  ${SSL_PK_ARG} ${TRUSTSTORE_ARG} ${LITELINKS_ARGS} ${CUSTOM_JVM_ARGS} \
