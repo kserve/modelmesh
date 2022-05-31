@@ -6429,6 +6429,10 @@ public abstract class ModelMesh extends ThriftService
                                         }
                                         // else no pruning was done
                                     }
+
+                                    // Check for invalid lastUsed field value and repair if needed
+                                    repairLastUsedTimeIfNeeded(modelId, mr);
+
                                     // If we have room and this model is not loaded, add it to the list
                                     // to be loaded proactively
                                     if (proactiveLoadCandidates != null && insts.isEmpty() && failInsts.size() < 2
@@ -6606,6 +6610,21 @@ public abstract class ModelMesh extends ThriftService
                         } catch (InterruptedException ie) {
                             logger.warn("Interrupted while waiting for initiation of proactive model loads");
                             throw ie;
+                        }
+                    }
+
+                    private void repairLastUsedTimeIfNeeded(String modelId, ModelRecord mr) throws Exception {
+                        // Some ModelRecords records were observed in the registry with an invalid lastUsed
+                        // time of Long.MAX_VALUE, effectively pinning them at the front of the cache and
+                        // causing them to remain loaded even if not used.
+                        // It's not clear whether the bug causing this has yet been fixed - for now we repair
+                        // the entries and can monitor logs for the warning message below.
+                        if (mr.getLastUsed() == Long.MAX_VALUE) {
+                            mr.setLastUsed(currentTimeMillis() - (LASTUSED_AGE_ON_ADD_MS * 3L));
+                            if (registry.conditionalSet(modelId, mr)) {
+                                logger.warn("Repaired Long.MAX_VALUE lastUsed time in registry for model " + modelId);
+                            }
+                            // Don't worry if this fails, will try again next time around
                         }
                     }
 
