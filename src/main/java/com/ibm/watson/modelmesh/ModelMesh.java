@@ -138,7 +138,6 @@ import java.util.stream.Stream;
 
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static com.ibm.watson.kvutils.KVTable.EventType.*;
-import static com.ibm.watson.modelmesh.GrpcSupport.newInterruptingListener;
 import static com.ibm.watson.modelmesh.ModelLoader.UNIT_SIZE;
 import static com.ibm.watson.modelmesh.ModelMeshEnvVars.*;
 import static com.ibm.watson.modelmesh.SidecarModelMesh.trimStack;
@@ -3931,8 +3930,8 @@ public abstract class ModelMesh extends ThriftService
         } finally {
             if (methodStartNanos > 0L && metrics.isEnabled()) {
                 // only logged here in non-grpc (legacy) mode
-                metrics.logApplyMethodTookNanosMetric(true, getRequestMethodName(method, args),
-                        nanoTime() - methodStartNanos, metricStatusCode);
+                metrics.logRequestMetrics(true, getRequestMethodName(method, args),
+                        nanoTime() - methodStartNanos, metricStatusCode, -1, -1);
             }
             curThread.setName(threadNameBefore);
         }
@@ -4460,7 +4459,8 @@ public abstract class ModelMesh extends ThriftService
             long tookNanos = nanoTime() - beforeNanos;
             ce.afterInvoke(weight, tookNanos);
             if (code != null && metrics.isEnabled()) {
-                metrics.logApplyMethodTookNanosMetric(false, getRequestMethodName(method, args), tookNanos, code);
+                metrics.logRequestMetrics(false, getRequestMethodName(method, args),
+                        tookNanos, code, -1, -1);
             }
         }
     }
