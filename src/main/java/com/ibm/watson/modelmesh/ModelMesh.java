@@ -58,6 +58,7 @@ import com.ibm.watson.litelinks.server.ThriftService;
 import com.ibm.watson.modelmesh.ModelLoader.LoadedRuntime;
 import com.ibm.watson.modelmesh.ModelMesh.ExtendedStatusInfo.CopyInfo;
 import com.ibm.watson.modelmesh.ModelRecord.FailureInfo;
+import com.ibm.watson.modelmesh.TypeConstraintManager.ProhibitedTypeSet;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap.EvictionListenerWithTime;
 import com.ibm.watson.modelmesh.thrift.ApplierException;
@@ -3803,7 +3804,8 @@ public abstract class ModelMesh extends ThriftService
                         // here either the local instance was chosen as the target,
                         // no other instances were found/worked,
                         // or it's an internal req meaning the model can only be loaded locally
-                        throwIfLocalLoadNotAllowed(externalReq, mr, loadTargetFilter, loadFailureSeen, internalFailureSeen);
+                        throwIfLocalLoadNotAllowed(modelId, externalReq, mr, loadTargetFilter,
+                                loadFailureSeen, internalFailureSeen);
 
                         // limit the rate of cache churn - if we are full and our LRU entry is recent,
                         // reject the load rather than thrashing
@@ -3938,16 +3940,20 @@ public abstract class ModelMesh extends ThriftService
         }
     }
 
-    private void throwIfLocalLoadNotAllowed(boolean externalReq, ModelRecord mr, CacheMissExcludeSet loadTargetFilter, ModelLoadException loadFailureSeen, TException internalFailureSeen) throws TException {
+    private void throwIfLocalLoadNotAllowed(String modelId, boolean externalReq, ModelRecord mr,
+                                            CacheMissExcludeSet loadTargetFilter,
+                                            ModelLoadException loadFailureSeen, TException internalFailureSeen) throws TException {
         // Called after the decision has been made to attempt to load the model on the local instance
 
         // We need to check that
         // - The load target filter doesn't exclude us
         // - If there are type constraints, that they don't exclude us
+        boolean localFiltered = loadTargetFilter != null && loadTargetFilter.isExcluded(instanceId);
         Set<String> constrainTo;
-        if ((loadTargetFilter != null && loadTargetFilter.isExcluded(instanceId))
-            || (typeConstraints != null && (constrainTo = typeConstraints.getCandidateInstances(mr.getType())) != null
-                    && !constrainTo.contains(instanceId))) {
+        boolean blockedByTypeConstraint = typeConstraints != null
+                && (constrainTo = typeConstraints.getCandidateInstances(mr.getType())) != null
+                && !constrainTo.contains(instanceId);
+        if (localFiltered || blockedByTypeConstraint) {
             // We're not eligible to load the model, figure out why and throw an exception
             if (!externalReq) {
                 // should not be LOAD_LOCAL_ONLY && local filtered
@@ -3965,6 +3971,11 @@ public abstract class ModelMesh extends ThriftService
             if (internalFailureSeen != null) {
                 throw internalFailureSeen;
             }
+            // Reaching here is unexpected and implies some kind of state inconsistency.
+            // Log with some additional diagnostic info.
+            logger.warn("Nowhere available to load for model " + modelId + ": type=" + mr.getType()
+                + ", constraintBlocked=" + blockedByTypeConstraint + ", loadTargetFilter=" + loadTargetFilter
+                    + ", instanceTable=" + Iterables.toString(instanceInfo.keyIterable()));
             //maybe define specific exception
             throw new ModelLoadException("Nowhere available to load", null, 0L, null);
         }
@@ -4668,6 +4679,11 @@ public abstract class ModelMesh extends ThriftService
         boolean isExcluded(String instanceId) {
             return contains(instanceId) || loaded.contains(instanceId) || failed.contains(instanceId)
                     || (explicit != null && explicit.contains(instanceId));
+        }
+
+        @Override
+        public String toString() {
+            return "LTF" + super.toString() + "[l=" + loaded + ", f=" + failed + ", e=" + explicit + "]";
         }
     }
 
@@ -6479,7 +6495,7 @@ public abstract class ModelMesh extends ThriftService
                      */
                     void triggerProactiveLoadsForInstanceSubset(ClusterStats stats,
                             List<Entry<String, ModelRecord>> allCandidates,
-                            String[] excludeTypes) throws InterruptedException {
+                            ProhibitedTypeSet excludeTypes) throws InterruptedException {
                         // get free units
                         int freeSpaceProactiveLoadCount = 0, totalProactiveLoadCount = 0;
                         if (stats.totalCapacity > 0 && stats.totalFree > 0) {
@@ -6497,7 +6513,7 @@ public abstract class ModelMesh extends ThriftService
                             long spaceToFill = 0L;
                             for (Entry<String, InstanceRecord> ent : clusterState) {
                                 InstanceRecord ir = ent.getValue();
-                                if (excludeTypes != null && !Arrays.equals(excludeTypes, ir.prohibitedTypes)) {
+                                if (excludeTypes != null && !excludeTypes.equals(ir.prohibitedTypes)) {
                                     continue;
                                 }
                                 // skip instances with already significant loading queue
@@ -6528,8 +6544,7 @@ public abstract class ModelMesh extends ThriftService
                                 : stats.globalLru + Math.max(age(stats.globalLru) / 3L, 1_200_000L);
                         if (logger.isDebugEnabled()) {
                             logger.debug(excludeTypes == null ? "" :
-                                    ("PTS subset " + Arrays.toString(excludeTypes)
-                                            + " (" + stats.instanceCount + " instances):")
+                                    ("PTS subset " + excludeTypes + " (" + stats.instanceCount + " instances):")
                                     + " maxProactiveLoadCount=" + totalProactiveLoadCount
                                     + " >= freeSpaceProactiveLoadCount=" + freeSpaceProactiveLoadCount
                                     + "; proactiveLastUsedCutoff=" + (proactiveLastUsedCutoff == 0L ? "none"
@@ -6544,8 +6559,7 @@ public abstract class ModelMesh extends ThriftService
                                 continue;
                             }
                             ModelRecord mr = ent.getValue();
-                            if (excludeTypes != null
-                                && Arrays.binarySearch(excludeTypes, mr.getType()) >= 0) {
+                            if (excludeTypes != null && excludeTypes.contains(mr.getType())) {
                                 continue;
                             }
                             long lastUsed = mr.getLastUsed();
@@ -6569,8 +6583,7 @@ public abstract class ModelMesh extends ThriftService
                         // process list of models to be proactively loaded
                         logger.info("About to trigger proactive loading of " + toLoad.size() +
                                     " currently unloaded models" + (excludeTypes == null ? ""
-                                : " for instance subset with PTS" + Arrays.toString(excludeTypes)
-                                  + " and " + stats));
+                                : " for instance subset with " + excludeTypes + " and " + stats));
                         long beforeNanos = nanoTime();
                         int count = 0;
                         final Phaser phaser = new Phaser(1);

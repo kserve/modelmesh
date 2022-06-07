@@ -22,20 +22,17 @@ public final class Utils {
 
     private Utils() {}
 
-    public static final Comparator<String[]> STRING_ARRAY_COMP = new Comparator<String[]>() {
-        @Override
-        public int compare(String[] l1, String[] l2) {
-            int diff = l1.length - l2.length;
-            if (diff != 0) {
+    public static final Comparator<String[]> STRING_ARRAY_COMP = (l1, l2) -> {
+        int diff = l1.length - l2.length;
+        if (diff != 0) {
+            return diff;
+        }
+        for (int i = 0; i < l1.length; i++) {
+            if ((diff = l1[i].compareTo(l2[i])) != 0) {
                 return diff;
             }
-            for (int i = 0; i < l1.length; i++) {
-                if ((diff = l1[i].compareTo(l2[i])) != 0) {
-                    return diff;
-                }
-            }
-            return 0;
         }
+        return 0;
     };
 
     public static <T> boolean empty(T[] arr) {

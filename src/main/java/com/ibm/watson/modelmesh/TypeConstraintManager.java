@@ -40,17 +40,8 @@ import org.eclipse.collections.impl.map.mutable.primitive.ObjectIntHashMap;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -143,8 +134,7 @@ public final class TypeConstraintManager {
     private final Map<String[], InstanceSetStatsTracker> labelsToInstanceSetStats =
             new TreeMap<>(Utils.STRING_ARRAY_COMP);
     // Maps "Prohibited Type Sets" to instance sets (one-to-one)
-    private final Map<String[], InstanceSetStatsTracker> ptsToInstanceSetStats =
-            new TreeMap<>(Utils.STRING_ARRAY_COMP);
+    private final Map<ProhibitedTypeSet, InstanceSetStatsTracker> ptsToInstanceSetStats = new HashMap<>();
 
 
     // This is accessed racily but changes only when the type mappings change
@@ -296,6 +286,50 @@ public final class TypeConstraintManager {
             future.set(result);
         });
         return Futures.getUnchecked(future);
+    }
+
+    /**
+     * ProhibitedTypeSet is the set of types associated with one or more instances,
+     * where models of those types cannot be loaded on those instances. This class is immutable.
+     */
+    static final class ProhibitedTypeSet implements Comparable<ProhibitedTypeSet> {
+        private final String [] types; // sorted
+        private final int hashCode;
+
+        public ProhibitedTypeSet(Collection<String> types) {
+            this.types = types.toArray(NO_LABELS);
+            Arrays.sort(this.types);
+            this.hashCode = Stream.of(this.types).mapToInt(String::hashCode).sum();
+        }
+
+        public int size() {
+            return types.length;
+        }
+
+        public boolean contains(String type) {
+            return Arrays.binarySearch(types, type) >= 0;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof ProhibitedTypeSet
+                    && Arrays.equals(types, ((ProhibitedTypeSet) obj).types);
+        }
+
+        @Override
+        public int hashCode() {
+            return hashCode;
+        }
+
+        @Override
+        public String toString() {
+            return "PTS-" + Integer.toHexString(hashCode) + Arrays.toString(types);
+        }
+
+        @Override
+        public int compareTo(ProhibitedTypeSet o) {
+            return Utils.STRING_ARRAY_COMP.compare(types, o.types);
+        }
     }
 
     // Tracks per-modeltype requirements and preferences, and the resulting current sets
@@ -485,19 +519,17 @@ public final class TypeConstraintManager {
             typeConstraintsMap = ImmutableMap.copyOf(refreshPerTypeInstanceSets(newMap));
         }
         int count = instanceSetStats.getInstanceCount() + (includedInStats ? 0 : 1);
-        logger.info("Added instance " + iid + " to PTS"
-                    + Arrays.toString(instanceSetStats.prohibitedTypesSet)
+        logger.info("Added instance " + iid + " to " + instanceSetStats.prohibitedTypesSet
                     + ", now includes " + count + " instance" + (count == 1 ? "" : "s"));
         return instanceSetStats;
     }
 
-    /** Called from within synchronization context (executor) */
     void instanceRemoved(String iid, String[] labels) {
         final Map<String, ModelTypeConstraints> mtcMap = typeConstraintsMap;
         final Map<String, ModelTypeConstraints> newMap = instanceUpdated(iid, NO_LABELS, mtcMap);
         final InstanceSetStatsTracker instanceSetStats = labelsToInstanceSetStats.get(labels);
         if (instanceSetStats != null) {
-            String[] pts = instanceSetStats.prohibitedTypesSet;
+            ProhibitedTypeSet pts = instanceSetStats.prohibitedTypesSet;
             if (instanceSetStats.getInstanceCount() == 0) {
                 // none left, remove them
                 labelsToInstanceSetStats.remove(labels);
@@ -507,8 +539,8 @@ public final class TypeConstraintManager {
                 }
             }
             int count = instanceSetStats.getInstanceCount();
-            logger.info("Removed instance " + iid + " from PTS"
-                        + Arrays.toString(pts) + ", now includes " + count
+            logger.info("Removed instance " + iid + " from "
+                        + pts + ", now includes " + count
                         + " instance" + (count == 1 ? "" : "s"));
         }
         if (newMap != mtcMap) {
@@ -532,8 +564,7 @@ public final class TypeConstraintManager {
                     newPts.add(ent.getKey());
                 }
             }
-            String[] pts = newPts.toArray(NO_LABELS);
-            Arrays.sort(pts);
+            ProhibitedTypeSet pts = new ProhibitedTypeSet(newPts);
             instanceSetStats = ptsToInstanceSetStats.get(pts);
             if (instanceSetStats == null) {
                 instanceSetStats = new InstanceSetStatsTracker(pts, isFull);
@@ -619,7 +650,7 @@ public final class TypeConstraintManager {
             if (!ptsToInstanceSetStats.isEmpty()) {
                 logger.info("Clearing " + ptsToInstanceSetStats.size() + " prohibited type sets before repopulation: "
                         + ptsToInstanceSetStats.entrySet().stream()
-                        .map(e -> Arrays.toString(e.getKey()) + ": " + e.getValue().getInstanceCount())
+                        .map(e -> e.getKey() + ": " + e.getValue().getInstanceCount())
                         .collect(Collectors.joining(", ", "{", "}")));
             }
             labelsToInstanceSetStats.clear();
@@ -652,7 +683,7 @@ public final class TypeConstraintManager {
         // placement there. Start with the count of prohibited types * 4 and subtract count of preferred types
         MutableObjectIntMap<String> instanceScores = new ObjectIntHashMap<String>(clusterState.size());
         for (Map.Entry<String, InstanceRecord> ent : clusterState) {
-            instanceScores.put(ent.getKey(), ent.getValue().prohibitedTypes.length * 4);
+            instanceScores.put(ent.getKey(), ent.getValue().prohibitedTypes.size() * 4);
         }
         for (Map.Entry<String, ModelTypeConstraints> ent : mtcMap.entrySet()) {
             Set<String> preferred = ent.getValue().configuredPreferredInstances;
@@ -679,8 +710,8 @@ public final class TypeConstraintManager {
                 ent.setValue(mtc.updateInstanceSetStats(null, defaultPreferred));
             } else {
                 statSet.clear();
-                for (Entry<String[], InstanceSetStatsTracker> pts : ptsToInstanceSetStats.entrySet()) {
-                    if (Arrays.binarySearch(pts.getKey(), ent.getKey()) < 0) {
+                for (Entry<ProhibitedTypeSet, InstanceSetStatsTracker> pts : ptsToInstanceSetStats.entrySet()) {
+                    if (!pts.getKey().contains(ent.getKey())) {
                         statSet.add(pts.getValue());
                     }
                 }

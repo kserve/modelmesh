@@ -17,6 +17,7 @@
 package com.ibm.watson.modelmesh;
 
 import com.ibm.watson.modelmesh.ModelMesh.ClusterStats;
+import com.ibm.watson.modelmesh.TypeConstraintManager.ProhibitedTypeSet;
 
 import java.util.function.LongPredicate;
 
@@ -32,7 +33,7 @@ final class InstanceSetStatsTracker {
     static final ClusterStats EMPTY_STATS = new ClusterStats(0L, 0L, Long.MAX_VALUE, 0, 0);
 
     private final LongPredicate isFull;
-    final String[] prohibitedTypesSet;
+    final ProhibitedTypeSet prohibitedTypesSet;
 
     private long totalCapacity = 0, totalFree = 0, lru = Long.MAX_VALUE;
     private int count = 0, modelCount = 0;
@@ -40,7 +41,7 @@ final class InstanceSetStatsTracker {
     //TODO getter maybe
     volatile ClusterStats currentStats = EMPTY_STATS;
 
-    public InstanceSetStatsTracker(String[] prohibitedTypesSet, LongPredicate isFull) {
+    public InstanceSetStatsTracker(ProhibitedTypeSet prohibitedTypesSet, LongPredicate isFull) {
         this.prohibitedTypesSet = prohibitedTypesSet;
         this.isFull = isFull;
     }
