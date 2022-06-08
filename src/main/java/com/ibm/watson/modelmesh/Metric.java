@@ -31,9 +31,15 @@ enum Metric {
     INVOKE_MODEL_TIME("invoke-", "modelmesh_invoke_model_milliseconds", TIMING_HISTO,
             "Internal model server inference request time"),
     API_REQUEST_COUNT("api-", "modelmesh_api_request", COUNTER_WITH_HISTO, //TODO _total suffix TBD
-            "Count of external inference requets"),
+            "Count of external inference requests"),
     API_REQUEST_TIME("api-", "modelmesh_api_request_milliseconds", TIMING_HISTO,
             "External inference request time"),
+
+    // payload
+    REQUEST_PAYLOAD_SIZE("reqSize-", "modelmesh_request_size_bytes", MESSAGE_SIZE_HISTO,
+            "Inference request payload size"),
+    RESPONSE_PAYLOAD_SIZE("respSize-", "modelmesh_response_size_bytes", MESSAGE_SIZE_HISTO,
+            "Inference response payload size"),
 
     CACHE_MISS("cacheMiss", "modelmesh_cache_miss", COUNTER_WITH_HISTO,
             "Count of inference request cache misses"),
@@ -71,7 +77,7 @@ enum Metric {
             "Time since model was last used when evicted"),
 
     // size (bytes)
-    LOADED_MODEL_SIZE("mmModelSizeBytes", "modelmesh_loaded_model_size_bytes", SIZE_HISTO,
+    LOADED_MODEL_SIZE("mmModelSizeBytes", "modelmesh_loaded_model_size_bytes", MODEL_SIZE_HISTO,
             "Reported size of loaded model"),
 
 
@@ -137,6 +143,7 @@ enum Metric {
         GAUGE,
         TIMING_HISTO,
         AGE_HISTO,
-        SIZE_HISTO
+        MODEL_SIZE_HISTO,
+        MESSAGE_SIZE_HISTO
     }
 }

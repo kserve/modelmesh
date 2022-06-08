@@ -84,7 +84,18 @@ interface Metrics extends AutoCloseable {
         logGaugeMetric(INSTANCE_MODEL_COUNT, ir.getCount());
     }
 
-    void logApplyMethodTookNanosMetric(boolean external, String name, long elapsedNanos, Code code);
+    /**
+     * Record per-request metrics
+     *
+     * @param external whether this is an internal or external request
+     * @param name name of the request method (rpc)
+     * @param elapsedNanos time taken in nanoseconds
+     * @param code gRPC response code
+     * @param reqPayloadSize request payload size in bytes (or -1 if not applicable)
+     * @param respPayloadSize response payload size in bytes (or -1 if not applicable)
+     */
+    void logRequestMetrics(boolean external, String name, long elapsedNanos, Code code,
+                           int reqPayloadSize, int respPayloadSize);
 
     default void registerGlobals() {}
 
@@ -118,7 +129,8 @@ interface Metrics extends AutoCloseable {
         public void logInstanceStats(InstanceRecord ir) {}
 
         @Override
-        public void logApplyMethodTookNanosMetric(boolean external, String name, long elapsedNanos, Code code) {}
+        public void logRequestMetrics(boolean external, String name, long elapsedNanos, Code code,
+                                      int reqPayloadSize, int respPayloadSize) {}
     };
 
     final class PrometheusMetrics implements Metrics {
@@ -184,8 +196,11 @@ interface Metrics extends AutoCloseable {
                             ms(1, HOURS), ms(4, HOURS), ms(12, HOURS), ms(1, DAYS), ms(7, DAYS), ms(30, DAYS),
                             ms(90, DAYS));
                     break;
-                case SIZE_HISTO:
+                case MODEL_SIZE_HISTO:
                     builder = Histogram.build().exponentialBuckets(256 * 1024, 4, 8); // 256KiB
+                    break;
+                case MESSAGE_SIZE_HISTO:
+                    builder = Histogram.build().exponentialBuckets(128, 4, 8); // 128B
                     break;
                 default:
                     // e.g. COUNTER_WITH_HISTO -- don't register this
@@ -193,7 +208,7 @@ interface Metrics extends AutoCloseable {
                 }
 
                 if (m == API_REQUEST_TIME || m == API_REQUEST_COUNT || m == INVOKE_MODEL_TIME
-                    || m == INVOKE_MODEL_COUNT) {
+                    || m == INVOKE_MODEL_COUNT || m == REQUEST_PAYLOAD_SIZE || m == RESPONSE_PAYLOAD_SIZE) {
                     builder.labelNames("method", "code");
                 }
 
@@ -276,7 +291,8 @@ interface Metrics extends AutoCloseable {
         }
 
         @Override
-        public void logApplyMethodTookNanosMetric(boolean external, String name, long elapsedNanos, Code code) {
+        public void logRequestMetrics(boolean external, String name, long elapsedNanos, Code code,
+                                      int reqPayloadSize, int respPayloadSize) {
             final long elapsedMillis = elapsedNanos / M;
             final Histogram timingHisto = (Histogram) metricsMap
                     .get(external ? API_REQUEST_TIME : INVOKE_MODEL_TIME);
@@ -284,8 +300,15 @@ interface Metrics extends AutoCloseable {
             int idx = shortNames ? name.indexOf('/') : -1;
             final String methodName = idx == -1 ? name : name.substring(idx + 1);
 
-            if (code == Code.OK) {
-                timingHisto.labels(methodName, Code.OK.name()).observe(elapsedMillis);
+            timingHisto.labels(methodName, code.name()).observe(elapsedMillis);
+
+            if (reqPayloadSize != -1) {
+                ((Histogram) metricsMap.get(REQUEST_PAYLOAD_SIZE))
+                    .labels(methodName, code.name()).observe(reqPayloadSize);
+            }
+            if (respPayloadSize != -1) {
+                ((Histogram) metricsMap.get(RESPONSE_PAYLOAD_SIZE))
+                        .labels(methodName, code.name()).observe(respPayloadSize);
             }
         }
 
@@ -400,7 +423,8 @@ interface Metrics extends AutoCloseable {
         }
 
         @Override
-        public void logApplyMethodTookNanosMetric(boolean external, String name, long elapsedNanos, Code code) {
+        public void logRequestMetrics(boolean external, String name, long elapsedNanos, Code code,
+                                      int reqPayloadSize, int respPayloadSize) {
             final StatsDClient client = this.client;
             final long elapsedMillis = elapsedNanos / M;
             final String countName = name(external ? API_REQUEST_COUNT : INVOKE_MODEL_COUNT);
@@ -413,27 +437,27 @@ interface Metrics extends AutoCloseable {
                 if (code == Code.OK) {
                     String timeName = name(external ? API_REQUEST_TIME : INVOKE_MODEL_TIME);
                     // ship response time for successful calls
-                    sb.append(timeName);
-                    if (idx == -1) {
-                        sb.append(name);
-                    } else {
-                        sb.append(name, idx + 1, name.length());
-                    }
+                    appendName(sb, timeName, name, idx);
                     client.recordExecutionTime(sb.toString(), elapsedMillis);
                     if (timeName != countName) {
                         sb.setLength(0);
                     }
                 }
                 if (sb.length() == 0) {
-                    sb.append(countName);
-                    if (idx == -1) {
-                        sb.append(name);
-                    } else {
-                        sb.append(name, idx + 1, name.length());
-                    }
+                    appendName(sb, countName, name, idx);
                 }
                 // ship counter for all calls
                 client.incrementCounter(sb.append('.').append(code.name()).toString());
+                if (reqPayloadSize != -1) {
+                    sb.setLength(0);
+                    client.recordExecutionTime(appendName(sb, name(REQUEST_PAYLOAD_SIZE), name, idx)
+                            .append('.').append(code.name()).toString(), reqPayloadSize);
+                }
+                if (respPayloadSize != -1) {
+                    sb.setLength(0);
+                    client.recordExecutionTime(appendName(sb, name(RESPONSE_PAYLOAD_SIZE), name, idx)
+                            .append('.').append(code.name()).toString(), respPayloadSize);
+                }
             } else {
                 String[] tags = getOkTags(name, shortNames);
                 if (code == Code.OK) {
@@ -445,7 +469,23 @@ interface Metrics extends AutoCloseable {
                 }
                 // ship counter for all calls
                 client.incrementCounter(countName, tags);
+                if (reqPayloadSize != -1) {
+                    client.recordExecutionTime(name(REQUEST_PAYLOAD_SIZE), reqPayloadSize, tags);
+                }
+                if (respPayloadSize != -1) {
+                    client.recordExecutionTime(name(RESPONSE_PAYLOAD_SIZE), respPayloadSize, tags);
+                }
             }
+        }
+
+        private StringBuilder appendName(StringBuilder sb, String metricName, String methodName, int idx) {
+            sb.append(metricName);
+            if (idx == -1) {
+                sb.append(methodName);
+            } else {
+                sb.append(methodName, idx + 1, methodName.length());
+            }
+            return sb;
         }
 
         private String name(Metric metric) {

@@ -58,7 +58,6 @@ import io.grpc.Contexts;
 import io.grpc.Deadline;
 import io.grpc.HandlerRegistry;
 import io.grpc.Metadata;
-import io.grpc.Metadata.Key;
 import io.grpc.Server;
 import io.grpc.ServerCall;
 import io.grpc.ServerCall.Listener;
@@ -687,7 +686,8 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     call.close(INTERNAL.withDescription("Half-closed without a request"), emptyMeta());
                     return;
                 }
-
+                final int reqSize = reqMessage.readableBytes();
+                int respSize = -1;
                 io.grpc.Status status = INTERNAL;
                 try (InterruptingListener cancelListener = newInterruptingListener()) {
                     if (logHeaders != null) {
@@ -719,6 +719,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                             releaseReqMessage();
                         }
 
+                        respSize = response.data.readableBytes();
                         call.sendHeaders(response.metadata);
                         call.sendMessage(response.data);
                         response = null;
@@ -750,8 +751,8 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     call.close(status, emptyMeta());
                     Metrics metrics = delegate.metrics;
                     if (metrics.isEnabled()) {
-                        metrics.logApplyMethodTookNanosMetric(true, methodName, nanoTime() - startNanos,
-                                status.getCode());
+                        metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
+                                status.getCode(), reqSize, respSize);
                     }
                 }
             }

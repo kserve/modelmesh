@@ -89,6 +89,7 @@ public class NettyServer implements Closeable {
         logger.info("Starting prometheus " + (tls ? "HTTPS" : "HTTP") + " server on port " + port);
         final SslContext sslContext;
         if (tls) {
+            // Note this requires bouncycastle library for java versions >= 15
             SelfSignedCertificate cert = new SelfSignedCertificate();
             sslContext = SslContextBuilder.forServer(cert.key(), cert.cert())
                 .sslProvider(OpenSsl.isAvailable() ? SslProvider.OPENSSL : SslProvider.JDK).build();
