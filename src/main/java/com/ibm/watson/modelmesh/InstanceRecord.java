@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ibm.watson.kvutils.KVRecord;
+import com.ibm.watson.modelmesh.TypeConstraintManager.ProhibitedTypeSet;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -69,7 +70,7 @@ public class InstanceRecord extends KVRecord {
 
     // This is set only when type constraints are in use
     @JsonIgnore
-    transient volatile String[] prohibitedTypes;
+    transient volatile ProhibitedTypeSet prohibitedTypes;
 
     InstanceRecord() { // just for jackson defaults resolution
         this(0, 0, null, null, NO_LABELS);
