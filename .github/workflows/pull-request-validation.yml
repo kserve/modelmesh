@@ -1,0 +1,38 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3.1.1
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    - name: Install etcd
+      run: sudo ./.github/install-etcd.sh
+    - name: Build with Maven
+      run: mvn -B package --file pom.xml
+  build-image:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: kserve/modelmesh
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build runtime image
+      run: |
+        GIT_COMMIT=$(git rev-parse HEAD)
+        BUILD_ID=$(date '+%Y%m%d')-$(git rev-parse HEAD | cut -c -5)
+
+        # Strip git ref prefix from version
+        VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+
+        docker build -t ${{ env.IMAGE_NAME }}:$VERSION \
+          --build-arg imageVersion=$VERSION \
+          --build-arg buildId=${BUILD_ID} \
+          --build-arg commitSha=${GIT_COMMIT} .

@@ -28,7 +28,7 @@ RUN true \
     && sed -i 's:#security.provider.1=SunPKCS11 ${java.home}/lib/security/nss.cfg:security.provider.12=SunPKCS11 ${java.home}/lib/security/nss.cfg:g' /usr/lib/jvm/java-17-openjdk-*/conf/security/java.security \
     && true
 
-RUN microdnf install wget  \
+RUN microdnf install wget tar \
     gzip vim-common python39 maven && \
     pip3 install -U pip setuptools
 
