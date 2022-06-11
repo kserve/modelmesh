@@ -91,7 +91,7 @@ COPY --from=build /build/target/dockerhome/ /opt/kserve/mmesh/
 # Make this the current directory when starting the container
 WORKDIR /opt/kserve/mmesh
 
-RUN microdnf install shadow-utils python39 && \
+RUN microdnf install shadow-utils hostname python39 && \
     # Create app user
     useradd -c "Application User" -U -u ${USER} -m app && \
     chown -R app:0 /home/app && \
@@ -114,5 +114,4 @@ EXPOSE 8080
 USER ${USER}
 
 # The command to run by default when the container is first launched
-# Use scl_source to ensure PATH and other env vars are set up correctly with UBI python3 locations
 CMD ["sh", "-c", "exec /opt/kserve/mmesh/start.sh"]
