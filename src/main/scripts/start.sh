@@ -398,8 +398,8 @@ fi
 # print command that's about to be run
 set -x
 
-exec $JAVA_HOME/bin/java -cp "$LL_JAR:lib/*" -XX:+UnlockExperimentalVMOptions -XX:+UseConcMarkSweepGC \
- -XX:+CMSConcurrentMTEnabled -XX:GCTimeRatio=10 -XX:MaxGCPauseMillis=${MAX_GC_PAUSE} \
+exec $JAVA_HOME/bin/java -cp "$LL_JAR:lib/*" -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC \
+ -XX:MaxGCPauseMillis=${MAX_GC_PAUSE} \
  -XX:-ResizePLAB -Xmx${HEAP_SIZE_MB}m -Xms${HEAP_SIZE_MB}m \
  ${STRING_SCALE_JVM_ARGS} \
  -XX:MaxInlineLevel=28 \
