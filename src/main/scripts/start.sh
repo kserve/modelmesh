@@ -368,6 +368,8 @@ LITELINKS_ARGS="-Dlitelinks.cancel_on_client_close=true -Dlitelinks.threadcontex
 # have litelinks use OpenSSL instead of JDK TLS implementation (faster)
 LL_OPENSSL_ARG="-Dlitelinks.ssl.use_jdk=false"
 
+# These two args are needed to use netty's off-the-books direct buffer allocation
+NETTY_DIRECTBUF_ARGS="-Dio.netty.tryReflectionSetAccessible=true --add-opens=java.base/java.nio=ALL-UNNAMED"
 # this defaults to equal max heap, which can result in container OOMKilled
 MAX_DIRECT_BYTES="$((${MAX_DIRECT_BUFS_MB}*1024*1024))"
 # Java native direct memory setting shouldn't be used since all
@@ -405,7 +407,7 @@ exec $JAVA_HOME/bin/java -cp "$LL_JAR:lib/*" -XX:+UnlockExperimentalVMOptions -X
  -XX:MaxInlineLevel=28 \
  -Xlog:gc:"${MM_INSTALL_PATH}/log/vgc_${HOSTNAME}.log" ${GC_DIAG_ARGS} \
  -Dfile.encoding=UTF8 \
- -Dio.netty.tryReflectionSetAccessible=true \
+ ${NETTY_DIRECTBUF_ARGS} \
  ${DISABLE_FIPS_ARG} \
  ${JAVA_MAXDIRECT_ARG} ${NETTY_MAXDIRECT_ARG} ${NETTY_DISABLE_CHECK_ARGS} \
  ${GRPC_USE_SHARED_ALLOC_ARG} \
