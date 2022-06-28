@@ -746,6 +746,23 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
   }
 
   /**
+   * Not intended for general use
+   */
+  public boolean forceSetLastUsedTime(Object key, long lastUsed) {
+    final Node<K, V> node = data.get(key);
+    if (node == null) {
+      return false;
+    }
+    evictionLock.lock();
+    try {
+      node.lastUsed = lastUsed;
+    } finally {
+      evictionLock.unlock();
+    }
+    return true;
+  }
+
+  /**
    * @return entry's weight or -1 if not found
    */
   public int getWeight(Object key) {
@@ -1225,7 +1242,7 @@ public final class ConcurrentLinkedHashMap<K, V> extends AbstractMap<K, V>
           : evictionDeque.descendingIterator();
       while (iterator.hasNext() && (limit > map.size())) {
         Node<K, V> node = iterator.next();
-        long lastUsed = node.lastUsed;
+        long lastUsed = node.getLastUsed();
         if (lastUsed > 0L && (ascending ? lastUsed > usedSinceOrBefore
                 : lastUsed < usedSinceOrBefore)) {
           break;
