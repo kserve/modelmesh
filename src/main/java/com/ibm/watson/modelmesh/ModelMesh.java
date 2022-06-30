@@ -3645,8 +3645,8 @@ public abstract class ModelMesh extends ThriftService
                                                     KVSTORE_LOAD_FAILURE, e);
                                             CacheEntry<?> failedEntry = new CacheEntry<>(modelId, mr, mle);
                                             cacheEntry = unloadManager != null
-                                                ? unloadManager.insertFailedPlaceholderEntry(modelId, failedEntry, Long.MAX_VALUE)
-                                                : runtimeCache.putIfAbsent(modelId, failedEntry, Long.MAX_VALUE);
+                                                ? unloadManager.insertFailedPlaceholderEntry(modelId, failedEntry, mr.getLastUsed())
+                                                : runtimeCache.putIfAbsent(modelId, failedEntry, mr.getLastUsed());
                                             if (cacheEntry == null) {
                                                 throw mle;
                                             }
@@ -5772,10 +5772,23 @@ public abstract class ModelMesh extends ThriftService
                                                 + " lastUsed is " + lastUsed + " > " + lastLastUsed);
                                 }
                                 lastLastUsed = lastUsed;
+
+                                ModelRecord mr = registry.get(modelId);
+
+                                if (lastUsed == Long.MAX_VALUE) {
+                                    // Cache entries here should not have a Long.MAX_VALUE lastUsed value but this has been observed
+                                    // in some environments. Repair/log here so that the entry is not pinned in the cache.
+                                    if (runtimeCache.forceSetLastUsedTime(modelId, now - (LASTUSED_AGE_ON_ADD_MS * 3L))) {
+                                        logger.warn("Force-updated unexpected Long.MAX_VALUE lastUsed time in cache for model " + modelId);
+                                        // Also update in registry if needed
+                                        repairLastUsedTimeIfNeeded(modelId, mr);
+                                    }
+                                    return;
+                                }
+
                                 // skip if new or recently used
                                 final boolean newOrUsedRecently = now - lastUsed < LOCAL_JANITOR_FREQ_SECS * 2000L
                                                                                    + loadTimeoutMs;
-                                ModelRecord mr = registry.get(modelId);
                                 if (newOrUsedRecently) {
                                     if (mr != null) {
                                         updateLastUsedTimeInRegistryIfStale(modelId, mr, lastUsed);
@@ -5991,6 +6004,10 @@ public abstract class ModelMesh extends ThriftService
             // ModelRecord instance should not be used after calling this meth (might be stale)
             private void updateLastUsedTimeInRegistryIfStale(String modelId, ModelRecord mr, long lastUsed)
                     throws Exception {
+                if (lastUsed == Long.MAX_VALUE) {
+                    // This can be the case for certain failure placeholder records
+                    return;
+                }
                 // only attempt update of model record lastUsed time if it's more than
                 // minStaleAge out of date.
                 long recLastUsed = mr.getLastUsed();
@@ -6638,21 +6655,6 @@ public abstract class ModelMesh extends ThriftService
                         }
                     }
 
-                    private void repairLastUsedTimeIfNeeded(String modelId, ModelRecord mr) throws Exception {
-                        // Some ModelRecords records were observed in the registry with an invalid lastUsed
-                        // time of Long.MAX_VALUE, effectively pinning them at the front of the cache and
-                        // causing them to remain loaded even if not used.
-                        // It's not clear whether the bug causing this has yet been fixed - for now we repair
-                        // the entries and can monitor logs for the warning message below.
-                        if (mr.getLastUsed() == Long.MAX_VALUE) {
-                            mr.setLastUsed(currentTimeMillis() - (LASTUSED_AGE_ON_ADD_MS * 3L));
-                            if (registry.conditionalSet(modelId, mr)) {
-                                logger.warn("Repaired Long.MAX_VALUE lastUsed time in registry for model " + modelId);
-                            }
-                            // Don't worry if this fails, will try again next time around
-                        }
-                    }
-
                     /**
                      * @return number of missing instances which were removed from the map
                      */
@@ -6738,6 +6740,21 @@ public abstract class ModelMesh extends ThriftService
             } catch (Exception e) {
                 logger.warn("New leader could not be determined", e);
             }
+        }
+    }
+
+    final void repairLastUsedTimeIfNeeded(String modelId, ModelRecord mr) throws Exception {
+        // Some ModelRecords records were observed in the registry with an invalid lastUsed
+        // time of Long.MAX_VALUE, effectively pinning them at the front of the cache and
+        // causing them to remain loaded even if not used.
+        // It's not clear whether the bug causing this has yet been fixed - for now we repair
+        // the entries and can monitor logs for the warning message below.
+        if (mr != null && mr.getLastUsed() == Long.MAX_VALUE) {
+            mr.setLastUsed(currentTimeMillis() - (LASTUSED_AGE_ON_ADD_MS * 3L));
+            if (registry.conditionalSet(modelId, mr)) {
+                logger.warn("Repaired Long.MAX_VALUE lastUsed time in registry for model " + modelId);
+            }
+            // Don't worry if this fails, will try again next time around
         }
     }
 
