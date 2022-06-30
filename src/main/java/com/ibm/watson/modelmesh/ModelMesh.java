@@ -484,13 +484,11 @@ public abstract class ModelMesh extends ThriftService
     }
 
     static final Pattern VERSION_PATT = Pattern.compile(".+-(\\d{8})-(\\d+)");
-    @SuppressWarnings("serial")
     final SimpleDateFormat VERSION_SDF = new SimpleDateFormat("yyyyMMdd") {
         { setTimeZone(TimeZone.getTimeZone("GMT")); }
     };
 
     static final Pattern VERSION_PATT_OLD = Pattern.compile("(\\d{8}-\\d{4})(?:-(\\d+))?");
-    @SuppressWarnings("serial")
     final SimpleDateFormat VERSION_SDF_OLD = new SimpleDateFormat("yyyyMMdd-HHmm") {
         { setTimeZone(TimeZone.getTimeZone("GMT")); }
     };
@@ -1565,7 +1563,7 @@ public abstract class ModelMesh extends ThriftService
         return ce;
     }
 
-    static final String ceStateString(int st) {
+    static String ceStateString(int st) {
         return st >= 0 && st < CE_STATE_STRS.length ? CE_STATE_STRS[st] : "UNRECOGNIZED(" + st + ")";
     }
 
@@ -1660,7 +1658,7 @@ public abstract class ModelMesh extends ThriftService
         // 3/4 of the scale-up req-load threshold
         // This variable is also used temporarily at creation
         // time, to record time spent in the loading queue
-        private long lastHeavyTime; //TODO volatile TBD
+        private volatile long lastHeavyTime;
 
         void recordInvocation(int weight) {
             invokeCount.add(weight);
@@ -1999,12 +1997,29 @@ public abstract class ModelMesh extends ThriftService
                     if (shuttingDown) {
                         return; // ignore if shutting down
                     }
-                    logger.error("Unload failed for model " + modelId + " type=" + modelInfo.getServiceType()
+                    String type = modelInfo != null ? modelInfo.getServiceType() : "N/A";
+                    logger.error("Unload failed for model " + modelId + " type=" + type
                                  + " after " + msSince(beforeNanos) + "ms", throwable);
                     unloadManager.unloadComplete(weight, false, modelId);
                     metrics.logCounterMetric(Metric.UNLOAD_MODEL_FAILURE);
                 }
             }, directExecutor());
+        }
+
+        final void setLoadingQueueStartTime() {
+            // lastHeavyTime field is used to store loading queue start time
+            // when cache entry is in QUEUED state only
+            assert state == QUEUED;
+            lastHeavyTime = nanoTime();
+        }
+
+        final long getAndResetLoadingQueueStartTimeNanos() {
+            // lastHeavyTime field is used to store loading queue start time
+            // when cache entry is in QUEUED state only
+            assert state == QUEUED;
+            long startTime = lastHeavyTime;
+            lastHeavyTime = 0L;
+            return startTime;
         }
 
         /**
@@ -2043,8 +2058,7 @@ public abstract class ModelMesh extends ThriftService
 
             logger.info("About to enqueue load for model " + modelId + " with initial weight " + absWeight + " units (~"
                         + mb(absWeight * UNIT_SIZE) + "), with priority " + priority);
-            // lastHeavyTime var used *temporarily* to record time spent in loading queue
-            lastHeavyTime = nanoTime();
+            setLoadingQueueStartTime();
             try {
                 loadingPool.execute(this);
             } catch (RejectedExecutionException ree) {
@@ -2089,10 +2103,9 @@ public abstract class ModelMesh extends ThriftService
                         return;
                     }
                     decrementLoadingCount = true;
-                    // lastHeavyTime is used for queue start time when in this state
-                    if (lastHeavyTime > 0) {
-                        long queueDelayMillis = (nanoTime() - lastHeavyTime) / M;
-                        lastHeavyTime = 0L;
+                    long queueStartTimeNanos = getAndResetLoadingQueueStartTimeNanos();
+                    if (queueStartTimeNanos > 0) {
+                        long queueDelayMillis = (nanoTime() - queueStartTimeNanos) / M;
                         metrics.logSizeEventMetric(Metric.LOAD_MODEL_QUEUE_DELAY, queueDelayMillis);
                         // Only log if the priority value is "in the future" which indicates
                         // that there is or were runtime requests waiting for this load.
@@ -2896,7 +2909,6 @@ public abstract class ModelMesh extends ThriftService
 
     /* --------------------------------- StatusInfo constants ---------------------------------------------------- */
 
-    @SuppressWarnings("serial")
     public static final class ExtendedStatusInfo extends StatusInfo {
         public static final class CopyInfo implements Comparable<CopyInfo> {
             static final CopyInfo[] EMPTY = new CopyInfo[0];
@@ -3710,7 +3722,7 @@ public abstract class ModelMesh extends ThriftService
                     }
 
                     // don't attempt to load if there already are >= MAX_LOAD_FAILURES recent load failures (these will expire)
-                    checkLoadFailureCount(modelId, mr, loadFailureSeen);
+                    checkLoadFailureCount(mr, loadFailureSeen);
 
                     // don't attempt load if failed to invoke in > N already loaded locations
                     checkLoadLocationCount(mr, explicitExcludes, internalFailureSeen);
@@ -4544,7 +4556,7 @@ public abstract class ModelMesh extends ThriftService
     }
 
     // check if model load failures have breached the maximum allowed limit
-    private static void checkLoadFailureCount(String modelId, ModelRecord mr, ModelLoadException loadFailureSeen)
+    private static void checkLoadFailureCount(ModelRecord mr, ModelLoadException loadFailureSeen)
             throws ModelLoadException {
         Map<String, Long> failedInInstances = mr.getLoadFailedInstanceIds();
         if (!failedInInstances.isEmpty()) {
@@ -6068,9 +6080,9 @@ public abstract class ModelMesh extends ThriftService
 
         if (numInstances == 2) {
             // if loaded in 2 places, reduce if old enough
-            long lastHeavyTime = ce.getLastHeavyTime();
-            long scaleDownAge = (nowMillis - stats.globalLru) / 5L; // 20% of cache "age"
-            if (lastHeavyTime == 0 || (nowMillis - lastHeavyTime) < (nowMillis - stats.globalLru) / 3L) {
+            long lastHeavyTime = ce.getLastHeavyTime(), cacheAge = nowMillis - stats.globalLru;
+            long scaleDownAge = cacheAge / 5L; // 20% of cache "age"
+            if (lastHeavyTime == 0 || (nowMillis - lastHeavyTime) < cacheAge / 3L) {
                 // unless model has recent "heavy" usage, cap scale-down age at 16 hours
                 scaleDownAge = Math.min(SECOND_COPY_REMOVE_MAX_AGE_MS, scaleDownAge);
             }
@@ -6463,8 +6475,8 @@ public abstract class ModelMesh extends ThriftService
                                 if (io.grpc.Status.fromThrowable(e).getCode() == Code.UNAVAILABLE) {
                                     if (++kvConnectionErrorCount >= 3) {
                                         logger.info("Skipping remaining models on this reaper iteration");
+                                        break;
                                     }
-                                    break;
                                 }
                             }
                         }
