@@ -57,18 +57,18 @@
     <!--suppress UnresolvedMavenProperty -->
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
-    <grpc-version>1.46.0</grpc-version>
-    <netty-version>4.1.77.Final</netty-version>
+    <grpc-version>1.48.0</grpc-version>
+    <netty-version>4.1.79.Final</netty-version>
     <litelinks-version>1.7.2</litelinks-version>
     <kv-utils-version>0.5.0</kv-utils-version>
     <etcd-java-version>0.0.20</etcd-java-version>
-    <protobuf-version>3.20.1</protobuf-version>
-    <annotation-version>9.0.62</annotation-version>
+    <protobuf-version>3.21.2</protobuf-version>
+    <annotation-version>9.0.64</annotation-version>
     <guava-version>31.1-jre</guava-version>
-    <jackson-databind-version>2.13.2.2</jackson-databind-version>
+    <jackson-databind-version>2.13.3</jackson-databind-version>
     <gson-version>2.9.0</gson-version>
-    <eclipse-collections-version>11.0.0</eclipse-collections-version>
-    <log4j2-version>2.17.2</log4j2-version>
+    <eclipse-collections-version>11.1.0</eclipse-collections-version>
+    <log4j2-version>2.18.0</log4j2-version>
     <slf4j-version>1.7.36</slf4j-version>
     <!-- Care must be taken when updating the prometheus client lib version
          since we have some custom optimized extensions to this -->
