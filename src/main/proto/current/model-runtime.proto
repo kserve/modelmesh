@@ -43,9 +43,14 @@ service ModelRuntime {
   // Predict size of not-yet-loaded model - must return almost immediately.
   // Should not perform expensive computation or remote lookups.
   // Should be a conservative estimate.
+  // NOTE: Implementation of this RPC is optional.
   rpc predictModelSize (PredictModelSizeRequest) returns (PredictModelSizeResponse) {}
 
-  // Calculate size (memory consumption) of currently-loaded model
+  // Calculate size (memory consumption) of currently-loaded model.
+  // NOTE: Implementation of this RPC is only required if models' size
+  // is not returned in the response to loadModel. If the size computation
+  // takes a nontrivial amount of time, it's better to return from loadModel
+  // immediately and implement this to perform the sizing separately.
   rpc modelSize (ModelSizeRequest) returns (ModelSizeResponse) {}
 
   // Provide basic runtime status and parameters; called only during startup.
