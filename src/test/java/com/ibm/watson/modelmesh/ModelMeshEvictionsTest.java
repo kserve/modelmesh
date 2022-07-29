@@ -94,6 +94,11 @@ public class ModelMeshEvictionsTest {
         initializeTasStandaloneZookeeperTables();
 
         System.setProperty("tas.janitor_freq_secs", "2");
+        // Shorten rate tracking task frequency from 10 sec to 100ms
+        System.setProperty("tas.ratecheck_freq_ms", "100");
+        // Increase autoscale threshold - to effectively disable
+        // load-based autoscaling logic when testing second-copy add behaviour
+        System.setProperty("MM_SCALEUP_RPM_THRESHOLD", "100000");
 
         //cluster mode
         createTasCluster();
@@ -400,7 +405,8 @@ public class ModelMeshEvictionsTest {
     }
 
     @Test
-    public void testMultiCopies() throws Exception {
+    @Timeout(value = 40, unit = TimeUnit.SECONDS)
+    public void testSecondCopyTrigger() throws Exception {
         String modelId = "mymodel";
         ModelInfo modelInfo = new ModelInfo(serviceType, modelPath);
         assertEquals(Status.LOADED, clusterClient.addModel(modelId, modelInfo, true, true).getStatus());
@@ -408,21 +414,44 @@ public class ModelMeshEvictionsTest {
         // only one copy gets loaded during the add
         assertEquals(1, clusterRegistry.get(modelId).getInstanceIds().size());
 
+        // With the rateTrackingTask frequency reduced to 100ms, a second copy
+        // will be triggered if there are two usages of the model more than 4.2
+        // but less than 24 second apart
+
+        // Small sleep to ensure the rateTracking task is running post-startup
+        Thread.sleep(60);
         clusterClient.applyModel(modelId, null, null);
-        Set<String> instances = new HashSet<>();
-        Thread.sleep(3000L);
-        // this "usage" should trigger a second copy to be loaded
+        Thread.sleep(1000L);
+        // After a single use, should still be a single copy
+        assertCopyCount(modelId, 1);
         clusterClient.applyModel(modelId, null, null);
-        Thread.sleep(3000L);
-        for (int i = 0; i < 8; i++) {
-            instances.add(StandardCharsets.UTF_8.decode(
-                    clusterClient.applyModel(modelId, null, null)).toString());
-        }
-        assertEquals(2, instances.size());
-        assertEquals(2, clusterRegistry.get(modelId).getInstanceIds().size());
+        Thread.sleep(500L);
+        // Next usage is only 1 sec after first usage, so should remain as 1 copy
+        assertCopyCount(modelId, 1);
+        Thread.sleep(25_000);
+        clusterClient.applyModel(modelId, null, null);
+        Thread.sleep(500L);
+        // More than 25 sec later crosses max interval threshold,
+        // also should not trigger yet
+        assertCopyCount(modelId, 1);
+        Thread.sleep(4000L);
+        clusterClient.applyModel(modelId, null, null);
+        Thread.sleep(500L);
+        // latest use had another usage of the model 4.5 seconds prior which is
+        // within the [4.5, 24] sec range and hence should trigger the second copy
+        assertCopyCount(modelId, 2);
         clusterClient.deleteModel(modelId);
     }
 
+    void assertCopyCount(String modelId, int expected) throws Exception {
+        Set<String> instances = new HashSet<>();
+        for (int i = 0; i < (expected * 4); i++) {
+            instances.add(StandardCharsets.UTF_8.decode(
+                    clusterClient.applyModel(modelId, null, null)).toString());
+        }
+        assertEquals(expected, instances.size());
+        assertEquals(expected, clusterRegistry.get(modelId).getInstanceIds().size());
+    }
 
     @AfterEach
     public void afterEachTest() {
