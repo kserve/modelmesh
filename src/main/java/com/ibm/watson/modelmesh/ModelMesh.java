@@ -229,15 +229,15 @@ public abstract class ModelMesh extends ThriftService
 
     protected static final int DEFAULT_SCALEUP_RPM = 2000;
 
-    /* These are the "ages" in terms of iterations of the rateTrackingTask
-     * between which a prior use of a single-copy model will trigger a second
-     * copy to be loaded. With the default rate checking task frequency of 10 sec
-     * they correspond to 40 and 7 minutes respectively.
+    /* These are the "ages" between which a prior use of a single-copy model will
+     * trigger a second copy to be loaded. Note that the actual precision corresponds
+     * to the period of the rateTrackingTask which has a default of 10 seconds.
+     * By default these values are 40 and 7 minutes respectively.
      * This is a heuristic for identifying "regular" usage as apposed to one-off
      * or short burst.
      */
-    final int SECOND_COPY_MAX_AGE_ITERS = Integer.getInteger("mm.max_second_copy_age_itrs", 240);
-    final int SECOND_COPY_MIN_AGE_ITERS = Integer.getInteger("mm.min_second_copy_age_itrs", 42);
+    protected final int SECOND_COPY_MAX_AGE_SECS = Integer.getInteger("mm.max_second_copy_age_secs", 2400);
+    protected final int SECOND_COPY_MIN_AGE_SECS = Integer.getInteger("mm.min_second_copy_age_secs", 420);
 
     /* Last-used age after which second model copies will be removed
      * (2->1 scaledown). Note this is a maximum and a smaller value might
@@ -500,8 +500,8 @@ public abstract class ModelMesh extends ThriftService
         }
 
         // Validate some constants which can be overridden via system properties
-        if (SECOND_COPY_MAX_AGE_ITERS < SECOND_COPY_MIN_AGE_ITERS
-            || SECOND_COPY_MIN_AGE_ITERS < 0) {
+        if (SECOND_COPY_MAX_AGE_SECS < SECOND_COPY_MIN_AGE_SECS
+            || SECOND_COPY_MIN_AGE_SECS < 0) {
             throw new Exception("Invalid value for overridden second-copy trigger age range");
         }
 
@@ -5485,11 +5485,14 @@ public abstract class ModelMesh extends ThriftService
      */
     private Runnable rateTrackingTask() {
         return new Runnable() {
-            // applies only to time-tracking mode, updated after each non-empty iteration
-            double averageModelParallelism = 1.0;
+            final int secondCopyMaxAgeIters = (int) ((SECOND_COPY_MAX_AGE_SECS * 1000L) / RATE_CHECK_INTERVAL_MS);
+            final int secondCopyMinAgeIters = (int) ((SECOND_COPY_MIN_AGE_SECS * 1000L) / RATE_CHECK_INTERVAL_MS);
 
             // this is incremented each iteration (~ every RATE_CHECK_INTERVAL_MS)
             int iterationCounter;
+
+            // applies only to time-tracking mode, updated after each non-empty iteration
+            double averageModelParallelism = 1.0;
 
             @Override
             public void run() {
@@ -5508,14 +5511,12 @@ public abstract class ModelMesh extends ThriftService
                     // Determine the upper and lower bounds (inclusive) in terms of
                     // iteration number between which a prior use of a single-copy model
                     // will trigger a second copy to be loaded.
-                    final int lower = iterationCounter - SECOND_COPY_MAX_AGE_ITERS;
-                    final int upper = iterationCounter - SECOND_COPY_MIN_AGE_ITERS;
+                    final int lower = iterationCounter - secondCopyMaxAgeIters;
+                    final int upper = iterationCounter - secondCopyMinAgeIters;
 
-                    boolean success = false;
                     try {
                         int instCount = clusterStats.instanceCount;
                         if (instCount < 2) {
-                            success = true;
                             return; // can't scale if there are no other instances
                         }
 
@@ -5526,9 +5527,7 @@ public abstract class ModelMesh extends ThriftService
                             unloadManager.removeUnloadBufferEntry(usedSinceLastRun);
                         }
                         if (usedSinceLastRun.isEmpty()) {
-                            // no invocations since last check
-                            success = true;
-                            return;
+                            return; // no invocations since last check
                         }
 
                         // last-used timestamp to assign to newly triggered copy loads.
@@ -5549,6 +5548,7 @@ public abstract class ModelMesh extends ThriftService
                             try {
                                 modelId = ent.getKey(); // used in catch block
                                 CacheEntry<?> ce = ent.getValue();
+                                final long count = ce.getAndResetIntervalCount(); // Always reset
                                 ClusterStats clusterStats = typeSetStats(ce.modelInfo.serviceType);
                                 int suitableInstCount = instCount;
                                 if (typeConstraints != null) {
@@ -5559,7 +5559,7 @@ public abstract class ModelMesh extends ThriftService
                                         continue;
                                     }
                                 }
-                                long count = ce.getAndResetIntervalCount();
+
                                 if (latencyBased) {
                                     MaxConcCacheEntry<?> mcce = (MaxConcCacheEntry<?>) ce;
                                     scaleUpRpms = mcce.getRpmScaleThreshold(true);
@@ -5594,6 +5594,9 @@ public abstract class ModelMesh extends ThriftService
                                             + ": target range [" + lower + ", " + upper + "], I1="
                                                 + i1 + ", I2=" + i2 + ", curIteration=" + iterationCounter);
                                     }
+                                    System.out.println("Second copy trigger evaluation for model " + modelId
+                                            + ": target range [" + lower + ", " + upper + "], I1="
+                                            + i1 + ", I2=" + i2 + ", curIteration=" + iterationCounter);
 
                                     boolean i1inRange = false, i2inRange = false;
                                     if (i2 >= lower && i1 <= upper) {
@@ -5674,7 +5677,6 @@ public abstract class ModelMesh extends ThriftService
                                 modelId = null;
                             }
                         }
-                        success = true;
                         if (latencyBased) {
                             averageModelParallelism = Math.max(1.0,
                                     ((double) modelParallelismSum) / usedSinceLastRun.size());
@@ -5685,11 +5687,9 @@ public abstract class ModelMesh extends ThriftService
                         }
 
                     } finally {
-                        if (success) {
-                            // only set this if we've reset the model counts
-                            lastCheckTime = now;
-                            iterationCounter++;
-                        }
+                        // only set this if we've reset the model counts
+                        lastCheckTime = now;
+                        iterationCounter++;
                     }
                 } finally {
                     curThread.setName(threadNameBefore);

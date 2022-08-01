@@ -94,7 +94,11 @@ public class ModelMeshEvictionsTest {
         initializeTasStandaloneZookeeperTables();
 
         System.setProperty("tas.janitor_freq_secs", "2");
+        // Shorten second copy ages to a more reasonable range for testing
+        System.setProperty("mm.max_second_copy_age_secs", "10");
+        System.setProperty("mm.min_second_copy_age_secs", "4");
         // Shorten rate tracking task frequency from 10 sec to 100ms
+        // accordingly for suitable interation granularity
         System.setProperty("tas.ratecheck_freq_ms", "100");
         // Increase autoscale threshold - to effectively disable
         // load-based autoscaling logic when testing second-copy add behaviour
@@ -405,7 +409,6 @@ public class ModelMeshEvictionsTest {
     }
 
     @Test
-    @Timeout(value = 40, unit = TimeUnit.SECONDS)
     public void testSecondCopyTrigger() throws Exception {
         String modelId = "mymodel";
         ModelInfo modelInfo = new ModelInfo(serviceType, modelPath);
@@ -428,17 +431,17 @@ public class ModelMeshEvictionsTest {
         Thread.sleep(500L);
         // Next usage is only 1 sec after first usage, so should remain as 1 copy
         assertCopyCount(modelId, 1);
-        Thread.sleep(25_000);
+        Thread.sleep(11_000);
         clusterClient.applyModel(modelId, null, null);
         Thread.sleep(500L);
-        // More than 25 sec later crosses max interval threshold,
+        // More than 10 sec later crosses max interval threshold,
         // also should not trigger yet
         assertCopyCount(modelId, 1);
-        Thread.sleep(4000L);
+        Thread.sleep(4500L);
         clusterClient.applyModel(modelId, null, null);
         Thread.sleep(500L);
         // latest use had another usage of the model 4.5 seconds prior which is
-        // within the [4.5, 24] sec range and hence should trigger the second copy
+        // within the [4, 20] sec range and hence should trigger the second copy
         assertCopyCount(modelId, 2);
         clusterClient.deleteModel(modelId);
     }
