@@ -5488,6 +5488,12 @@ public abstract class ModelMesh extends ThriftService
             final int secondCopyMaxAgeIters = (int) ((SECOND_COPY_MAX_AGE_SECS * 1000L) / RATE_CHECK_INTERVAL_MS);
             final int secondCopyMinAgeIters = (int) ((SECOND_COPY_MIN_AGE_SECS * 1000L) / RATE_CHECK_INTERVAL_MS);
 
+            // Minimum LRU when cache is close to full for permitting redundant model copies.
+            // This aims to avoid flip-flopping by ensuring that the scale-down lastUsed cutoff
+            // (10% of LRU) is at least 3x the SECOND_COPY_MAX_AGE_SECS scale-up threshold.
+            // Impose an absolute minimum of 6 hours.
+            final int secondCopyLruThresholdMillis = Math.max(SECOND_COPY_MAX_AGE_SECS * 3 * 10 * 1000, 6 * 3600_000);
+
             // this is incremented each iteration (~ every RATE_CHECK_INTERVAL_MS)
             int iterationCounter;
 
@@ -5594,10 +5600,6 @@ public abstract class ModelMesh extends ThriftService
                                             + ": target range [" + lower + ", " + upper + "], I1="
                                                 + i1 + ", I2=" + i2 + ", curIteration=" + iterationCounter);
                                     }
-                                    System.out.println("Second copy trigger evaluation for model " + modelId
-                                            + ": target range [" + lower + ", " + upper + "], I1="
-                                            + i1 + ", I2=" + i2 + ", curIteration=" + iterationCounter);
-
                                     boolean i1inRange = false, i2inRange = false;
                                     if (i2 >= lower && i1 <= upper) {
                                         i1inRange = i1 >= lower;
@@ -5612,9 +5614,9 @@ public abstract class ModelMesh extends ThriftService
                                         // Model was used within the target range [MIN_AGE, MAX_AGE] iterations ago
                                         // so trigger loading of a second copy
 
-                                        // Don't do it if > 90% full and cache is younger than 6 hours
+                                        // Don't do it if > 90% full and cache is younger than secondCopyLruThresholdMillis
                                         if ((10 * clusterStats.totalFree) / clusterStats.totalCapacity >= 1
-                                                || (now - clusterStats.globalLru) > (6 * 3600_000)) {
+                                                || (now - clusterStats.globalLru) > secondCopyLruThresholdMillis) {
                                             logger.info("Attempting to add second copy of model " + modelId
                                                     + " in another instance since \"regular\" usage was detected");
                                             ensureLoadedInternalAsync(modelId, lastTime, ce.getWeight(), excludeThisInstance, 0);
@@ -6508,7 +6510,7 @@ public abstract class ModelMesh extends ThriftService
                         // last-used time more recent than at least ~33% of the loaded models (since
                         // they will be replacing older loaded models)
                         long proactiveLastUsedCutoff = stats.globalLru == Long.MAX_VALUE ? 0L
-                                // minimum of 10 minutes here to avoid churn in pathological cases
+                                // minimum of 20 minutes here to avoid churn in pathological cases
                                 : stats.globalLru + Math.max(age(stats.globalLru) / 3L, 1_200_000L);
                         if (logger.isDebugEnabled()) {
                             logger.debug(excludeTypes == null ? "" :
