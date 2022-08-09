@@ -57,16 +57,16 @@
     <!--suppress UnresolvedMavenProperty -->
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
-    <grpc-version>1.48.0</grpc-version>
+    <grpc-version>1.48.1</grpc-version>
     <netty-version>4.1.79.Final</netty-version>
     <litelinks-version>1.7.2</litelinks-version>
-    <kv-utils-version>0.5.0</kv-utils-version>
-    <etcd-java-version>0.0.20</etcd-java-version>
-    <protobuf-version>3.21.2</protobuf-version>
-    <annotation-version>9.0.64</annotation-version>
+    <kv-utils-version>0.5.1</kv-utils-version>
+    <etcd-java-version>0.0.21</etcd-java-version>
+    <protobuf-version>3.21.4</protobuf-version>
+    <annotation-version>9.0.65</annotation-version>
     <guava-version>31.1-jre</guava-version>
     <jackson-databind-version>2.13.3</jackson-databind-version>
-    <gson-version>2.9.0</gson-version>
+    <gson-version>2.9.1</gson-version>
     <eclipse-collections-version>11.1.0</eclipse-collections-version>
     <log4j2-version>2.18.0</log4j2-version>
     <slf4j-version>1.7.36</slf4j-version>
@@ -74,7 +74,7 @@
          since we have some custom optimized extensions to this -->
     <prometheus-version>0.9.0</prometheus-version>
     <bouncycastle-version>1.70</bouncycastle-version>
-    <junit-version>5.8.2</junit-version>
+    <junit-version>5.9.0</junit-version>
 
     <dockerhome>${project.build.directory}/dockerhome</dockerhome>
     <skipTests>false</skipTests>
