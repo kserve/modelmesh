@@ -135,7 +135,7 @@ class RuntimeContainersPreStopServer implements Closeable {
                     }
                 });
 
-        return b.bind(port).channel();
+        return b.bind("127.0.0.1", port).channel();
     }
 
     @Override
