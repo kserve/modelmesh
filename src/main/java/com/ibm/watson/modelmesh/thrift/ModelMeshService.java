@@ -19,9 +19,9 @@ public class ModelMeshService {
      * @param input
      * @param metadata
      */
-    public java.util.List<java.nio.ByteBuffer> applyModelMulti(java.lang.String modelId, java.util.List<java.nio.ByteBuffer> input, java.util.Map<java.lang.String,java.lang.String> metadata) throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, org.apache.thrift.TException;
+    public java.util.List<java.nio.ByteBuffer> applyModelMulti(java.lang.String modelId, java.util.List<java.nio.ByteBuffer> input, java.util.Map<java.lang.String,java.lang.String> metadata) throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, InternalException, org.apache.thrift.TException;
 
-    public java.nio.ByteBuffer applyModel(java.lang.String modelId, java.nio.ByteBuffer input, java.util.Map<java.lang.String,java.lang.String> metadata) throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, org.apache.thrift.TException;
+    public java.nio.ByteBuffer applyModel(java.lang.String modelId, java.nio.ByteBuffer input, java.util.Map<java.lang.String,java.lang.String> metadata) throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, InternalException, org.apache.thrift.TException;
 
   }
 
@@ -53,7 +53,7 @@ public class ModelMeshService {
       super(iprot, oprot);
     }
 
-    public java.util.List<java.nio.ByteBuffer> applyModelMulti(java.lang.String modelId, java.util.List<java.nio.ByteBuffer> input, java.util.Map<java.lang.String,java.lang.String> metadata) throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, org.apache.thrift.TException
+    public java.util.List<java.nio.ByteBuffer> applyModelMulti(java.lang.String modelId, java.util.List<java.nio.ByteBuffer> input, java.util.Map<java.lang.String,java.lang.String> metadata) throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, InternalException, org.apache.thrift.TException
     {
       send_applyModelMulti(modelId, input, metadata);
       return recv_applyModelMulti();
@@ -68,7 +68,7 @@ public class ModelMeshService {
       sendBase("applyModelMulti", args);
     }
 
-    public java.util.List<java.nio.ByteBuffer> recv_applyModelMulti() throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, org.apache.thrift.TException
+    public java.util.List<java.nio.ByteBuffer> recv_applyModelMulti() throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, InternalException, org.apache.thrift.TException
     {
       applyModelMulti_result result = new applyModelMulti_result();
       receiveBase(result, "applyModelMulti");
@@ -87,10 +87,13 @@ public class ModelMeshService {
       if (result.mlException != null) {
         throw result.mlException;
       }
+      if (result.iException != null) {
+        throw result.iException;
+      }
       throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.MISSING_RESULT, "applyModelMulti failed: unknown result");
     }
 
-    public java.nio.ByteBuffer applyModel(java.lang.String modelId, java.nio.ByteBuffer input, java.util.Map<java.lang.String,java.lang.String> metadata) throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, org.apache.thrift.TException
+    public java.nio.ByteBuffer applyModel(java.lang.String modelId, java.nio.ByteBuffer input, java.util.Map<java.lang.String,java.lang.String> metadata) throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, InternalException, org.apache.thrift.TException
     {
       send_applyModel(modelId, input, metadata);
       return recv_applyModel();
@@ -105,7 +108,7 @@ public class ModelMeshService {
       sendBase("applyModel", args);
     }
 
-    public java.nio.ByteBuffer recv_applyModel() throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, org.apache.thrift.TException
+    public java.nio.ByteBuffer recv_applyModel() throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, InternalException, org.apache.thrift.TException
     {
       applyModel_result result = new applyModel_result();
       receiveBase(result, "applyModel");
@@ -123,6 +126,9 @@ public class ModelMeshService {
       }
       if (result.mlException != null) {
         throw result.mlException;
+      }
+      if (result.iException != null) {
+        throw result.iException;
       }
       throw new org.apache.thrift.TApplicationException(org.apache.thrift.TApplicationException.MISSING_RESULT, "applyModel failed: unknown result");
     }
@@ -173,7 +179,7 @@ public class ModelMeshService {
         prot.writeMessageEnd();
       }
 
-      public java.util.List<java.nio.ByteBuffer> getResult() throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, org.apache.thrift.TException {
+      public java.util.List<java.nio.ByteBuffer> getResult() throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, InternalException, org.apache.thrift.TException {
         if (getState() != org.apache.thrift.async.TAsyncMethodCall.State.RESPONSE_READ) {
           throw new java.lang.IllegalStateException("Method call not finished!");
         }
@@ -211,7 +217,7 @@ public class ModelMeshService {
         prot.writeMessageEnd();
       }
 
-      public java.nio.ByteBuffer getResult() throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, org.apache.thrift.TException {
+      public java.nio.ByteBuffer getResult() throws ApplierException, ModelNotHereException, ModelNotFoundException, ModelLoadException, InternalException, org.apache.thrift.TException {
         if (getState() != org.apache.thrift.async.TAsyncMethodCall.State.RESPONSE_READ) {
           throw new java.lang.IllegalStateException("Method call not finished!");
         }
@@ -269,6 +275,8 @@ public class ModelMeshService {
           result.mnfException = mnfException;
         } catch (ModelLoadException mlException) {
           result.mlException = mlException;
+        } catch (InternalException iException) {
+          result.iException = iException;
         }
         return result;
       }
@@ -304,6 +312,8 @@ public class ModelMeshService {
           result.mnfException = mnfException;
         } catch (ModelLoadException mlException) {
           result.mlException = mlException;
+        } catch (InternalException iException) {
+          result.iException = iException;
         }
         return result;
       }
@@ -371,6 +381,10 @@ public class ModelMeshService {
             } else if (e instanceof ModelLoadException) {
               result.mlException = (ModelLoadException) e;
               result.setMlExceptionIsSet(true);
+              msg = result;
+            } else if (e instanceof InternalException) {
+              result.iException = (InternalException) e;
+              result.setIExceptionIsSet(true);
               msg = result;
             } else if (e instanceof org.apache.thrift.transport.TTransportException) {
               _LOGGER.error("TTransportException inside handler", e);
@@ -448,6 +462,10 @@ public class ModelMeshService {
             } else if (e instanceof ModelLoadException) {
               result.mlException = (ModelLoadException) e;
               result.setMlExceptionIsSet(true);
+              msg = result;
+            } else if (e instanceof InternalException) {
+              result.iException = (InternalException) e;
+              result.setIExceptionIsSet(true);
               msg = result;
             } else if (e instanceof org.apache.thrift.transport.TTransportException) {
               _LOGGER.error("TTransportException inside handler", e);
@@ -1180,6 +1198,7 @@ public class ModelMeshService {
     private static final org.apache.thrift.protocol.TField NOT_HERE_FIELD_DESC = new org.apache.thrift.protocol.TField("notHere", org.apache.thrift.protocol.TType.STRUCT, (short)2);
     private static final org.apache.thrift.protocol.TField MNF_EXCEPTION_FIELD_DESC = new org.apache.thrift.protocol.TField("mnfException", org.apache.thrift.protocol.TType.STRUCT, (short)3);
     private static final org.apache.thrift.protocol.TField ML_EXCEPTION_FIELD_DESC = new org.apache.thrift.protocol.TField("mlException", org.apache.thrift.protocol.TType.STRUCT, (short)4);
+    private static final org.apache.thrift.protocol.TField I_EXCEPTION_FIELD_DESC = new org.apache.thrift.protocol.TField("iException", org.apache.thrift.protocol.TType.STRUCT, (short)5);
 
     private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new applyModelMulti_resultStandardSchemeFactory();
     private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new applyModelMulti_resultTupleSchemeFactory();
@@ -1189,6 +1208,7 @@ public class ModelMeshService {
     public @org.apache.thrift.annotation.Nullable ModelNotHereException notHere; // required
     public @org.apache.thrift.annotation.Nullable ModelNotFoundException mnfException; // required
     public @org.apache.thrift.annotation.Nullable ModelLoadException mlException; // required
+    public @org.apache.thrift.annotation.Nullable InternalException iException; // required
 
     /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
     public enum _Fields implements org.apache.thrift.TFieldIdEnum {
@@ -1196,7 +1216,8 @@ public class ModelMeshService {
       APPLIER_EXCEPTION((short)1, "applierException"),
       NOT_HERE((short)2, "notHere"),
       MNF_EXCEPTION((short)3, "mnfException"),
-      ML_EXCEPTION((short)4, "mlException");
+      ML_EXCEPTION((short)4, "mlException"),
+      I_EXCEPTION((short)5, "iException");
 
       private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -1222,6 +1243,8 @@ public class ModelMeshService {
             return MNF_EXCEPTION;
           case 4: // ML_EXCEPTION
             return ML_EXCEPTION;
+          case 5: // I_EXCEPTION
+            return I_EXCEPTION;
           default:
             return null;
         }
@@ -1277,6 +1300,8 @@ public class ModelMeshService {
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, ModelNotFoundException.class)));
       tmpMap.put(_Fields.ML_EXCEPTION, new org.apache.thrift.meta_data.FieldMetaData("mlException", org.apache.thrift.TFieldRequirementType.DEFAULT, 
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, ModelLoadException.class)));
+      tmpMap.put(_Fields.I_EXCEPTION, new org.apache.thrift.meta_data.FieldMetaData("iException", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, InternalException.class)));
       metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
       org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(applyModelMulti_result.class, metaDataMap);
     }
@@ -1289,7 +1314,8 @@ public class ModelMeshService {
       ApplierException applierException,
       ModelNotHereException notHere,
       ModelNotFoundException mnfException,
-      ModelLoadException mlException)
+      ModelLoadException mlException,
+      InternalException iException)
     {
       this();
       this.success = success;
@@ -1297,6 +1323,7 @@ public class ModelMeshService {
       this.notHere = notHere;
       this.mnfException = mnfException;
       this.mlException = mlException;
+      this.iException = iException;
     }
 
     /**
@@ -1319,6 +1346,9 @@ public class ModelMeshService {
       if (other.isSetMlException()) {
         this.mlException = new ModelLoadException(other.mlException);
       }
+      if (other.isSetIException()) {
+        this.iException = new InternalException(other.iException);
+      }
     }
 
     public applyModelMulti_result deepCopy() {
@@ -1334,6 +1364,7 @@ public class ModelMeshService {
       this.notHere = null;
       this.mnfException = null;
       this.mlException = null;
+      this.iException = null;
     }
 
     public int getSuccessSize() {
@@ -1477,6 +1508,31 @@ public class ModelMeshService {
       }
     }
 
+    @org.apache.thrift.annotation.Nullable
+    public InternalException getIException() {
+      return this.iException;
+    }
+
+    public applyModelMulti_result setIException(@org.apache.thrift.annotation.Nullable InternalException iException) {
+      this.iException = iException;
+      return this;
+    }
+
+    public void unsetIException() {
+      this.iException = null;
+    }
+
+    /** Returns true if field iException is set (has been assigned a value) and false otherwise */
+    public boolean isSetIException() {
+      return this.iException != null;
+    }
+
+    public void setIExceptionIsSet(boolean value) {
+      if (!value) {
+        this.iException = null;
+      }
+    }
+
     public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
       switch (field) {
       case SUCCESS:
@@ -1519,6 +1575,14 @@ public class ModelMeshService {
         }
         break;
 
+      case I_EXCEPTION:
+        if (value == null) {
+          unsetIException();
+        } else {
+          setIException((InternalException)value);
+        }
+        break;
+
       }
     }
 
@@ -1539,6 +1603,9 @@ public class ModelMeshService {
 
       case ML_EXCEPTION:
         return getMlException();
+
+      case I_EXCEPTION:
+        return getIException();
 
       }
       throw new java.lang.IllegalStateException();
@@ -1561,6 +1628,8 @@ public class ModelMeshService {
         return isSetMnfException();
       case ML_EXCEPTION:
         return isSetMlException();
+      case I_EXCEPTION:
+        return isSetIException();
       }
       throw new java.lang.IllegalStateException();
     }
@@ -1623,6 +1692,15 @@ public class ModelMeshService {
           return false;
       }
 
+      boolean this_present_iException = true && this.isSetIException();
+      boolean that_present_iException = true && that.isSetIException();
+      if (this_present_iException || that_present_iException) {
+        if (!(this_present_iException && that_present_iException))
+          return false;
+        if (!this.iException.equals(that.iException))
+          return false;
+      }
+
       return true;
     }
 
@@ -1649,6 +1727,10 @@ public class ModelMeshService {
       hashCode = hashCode * 8191 + ((isSetMlException()) ? 131071 : 524287);
       if (isSetMlException())
         hashCode = hashCode * 8191 + mlException.hashCode();
+
+      hashCode = hashCode * 8191 + ((isSetIException()) ? 131071 : 524287);
+      if (isSetIException())
+        hashCode = hashCode * 8191 + iException.hashCode();
 
       return hashCode;
     }
@@ -1711,6 +1793,16 @@ public class ModelMeshService {
           return lastComparison;
         }
       }
+      lastComparison = java.lang.Boolean.compare(isSetIException(), other.isSetIException());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetIException()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.iException, other.iException);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
       return 0;
     }
 
@@ -1769,6 +1861,14 @@ public class ModelMeshService {
         sb.append("null");
       } else {
         sb.append(this.mlException);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("iException:");
+      if (this.iException == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.iException);
       }
       first = false;
       sb.append(")");
@@ -1878,6 +1978,17 @@ public class ModelMeshService {
                 org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
               }
               break;
+            case 5: // I_EXCEPTION
+              if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
+                if (struct.iException == null) {
+                  struct.iException = new InternalException();
+                }
+                struct.iException.read(iprot);
+                struct.setIExceptionIsSet(true);
+              } else { 
+                org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+              }
+              break;
             default:
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
           }
@@ -1925,6 +2036,11 @@ public class ModelMeshService {
           struct.mlException.write(oprot);
           oprot.writeFieldEnd();
         }
+        if (struct.iException != null) {
+          oprot.writeFieldBegin(I_EXCEPTION_FIELD_DESC);
+          struct.iException.write(oprot);
+          oprot.writeFieldEnd();
+        }
         oprot.writeFieldStop();
         oprot.writeStructEnd();
       }
@@ -1958,7 +2074,10 @@ public class ModelMeshService {
         if (struct.isSetMlException()) {
           optionals.set(4);
         }
-        oprot.writeBitSet(optionals, 5);
+        if (struct.isSetIException()) {
+          optionals.set(5);
+        }
+        oprot.writeBitSet(optionals, 6);
         if (struct.isSetSuccess()) {
           {
             oprot.writeI32(struct.success.size());
@@ -1980,12 +2099,15 @@ public class ModelMeshService {
         if (struct.isSetMlException()) {
           struct.mlException.write(oprot);
         }
+        if (struct.isSetIException()) {
+          struct.iException.write(oprot);
+        }
       }
 
       @Override
       public void read(org.apache.thrift.protocol.TProtocol prot, applyModelMulti_result struct) throws org.apache.thrift.TException {
         org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-        java.util.BitSet incoming = iprot.readBitSet(5);
+        java.util.BitSet incoming = iprot.readBitSet(6);
         if (incoming.get(0)) {
           {
             org.apache.thrift.protocol.TList _list39 = iprot.readListBegin(org.apache.thrift.protocol.TType.STRING);
@@ -2028,6 +2150,13 @@ public class ModelMeshService {
           }
           struct.mlException.read(iprot);
           struct.setMlExceptionIsSet(true);
+        }
+        if (incoming.get(5)) {
+          if (struct.iException == null) {
+            struct.iException = new InternalException();
+          }
+          struct.iException.read(iprot);
+          struct.setIExceptionIsSet(true);
         }
       }
     }
@@ -2691,6 +2820,7 @@ public class ModelMeshService {
     private static final org.apache.thrift.protocol.TField NOT_HERE_FIELD_DESC = new org.apache.thrift.protocol.TField("notHere", org.apache.thrift.protocol.TType.STRUCT, (short)2);
     private static final org.apache.thrift.protocol.TField MNF_EXCEPTION_FIELD_DESC = new org.apache.thrift.protocol.TField("mnfException", org.apache.thrift.protocol.TType.STRUCT, (short)3);
     private static final org.apache.thrift.protocol.TField ML_EXCEPTION_FIELD_DESC = new org.apache.thrift.protocol.TField("mlException", org.apache.thrift.protocol.TType.STRUCT, (short)4);
+    private static final org.apache.thrift.protocol.TField I_EXCEPTION_FIELD_DESC = new org.apache.thrift.protocol.TField("iException", org.apache.thrift.protocol.TType.STRUCT, (short)5);
 
     private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new applyModel_resultStandardSchemeFactory();
     private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new applyModel_resultTupleSchemeFactory();
@@ -2700,6 +2830,7 @@ public class ModelMeshService {
     public @org.apache.thrift.annotation.Nullable ModelNotHereException notHere; // required
     public @org.apache.thrift.annotation.Nullable ModelNotFoundException mnfException; // required
     public @org.apache.thrift.annotation.Nullable ModelLoadException mlException; // required
+    public @org.apache.thrift.annotation.Nullable InternalException iException; // required
 
     /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
     public enum _Fields implements org.apache.thrift.TFieldIdEnum {
@@ -2707,7 +2838,8 @@ public class ModelMeshService {
       APPLIER_EXCEPTION((short)1, "applierException"),
       NOT_HERE((short)2, "notHere"),
       MNF_EXCEPTION((short)3, "mnfException"),
-      ML_EXCEPTION((short)4, "mlException");
+      ML_EXCEPTION((short)4, "mlException"),
+      I_EXCEPTION((short)5, "iException");
 
       private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -2733,6 +2865,8 @@ public class ModelMeshService {
             return MNF_EXCEPTION;
           case 4: // ML_EXCEPTION
             return ML_EXCEPTION;
+          case 5: // I_EXCEPTION
+            return I_EXCEPTION;
           default:
             return null;
         }
@@ -2787,6 +2921,8 @@ public class ModelMeshService {
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, ModelNotFoundException.class)));
       tmpMap.put(_Fields.ML_EXCEPTION, new org.apache.thrift.meta_data.FieldMetaData("mlException", org.apache.thrift.TFieldRequirementType.DEFAULT, 
           new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, ModelLoadException.class)));
+      tmpMap.put(_Fields.I_EXCEPTION, new org.apache.thrift.meta_data.FieldMetaData("iException", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+          new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, InternalException.class)));
       metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
       org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(applyModel_result.class, metaDataMap);
     }
@@ -2799,7 +2935,8 @@ public class ModelMeshService {
       ApplierException applierException,
       ModelNotHereException notHere,
       ModelNotFoundException mnfException,
-      ModelLoadException mlException)
+      ModelLoadException mlException,
+      InternalException iException)
     {
       this();
       this.success = success;
@@ -2807,6 +2944,7 @@ public class ModelMeshService {
       this.notHere = notHere;
       this.mnfException = mnfException;
       this.mlException = mlException;
+      this.iException = iException;
     }
 
     /**
@@ -2828,6 +2966,9 @@ public class ModelMeshService {
       if (other.isSetMlException()) {
         this.mlException = new ModelLoadException(other.mlException);
       }
+      if (other.isSetIException()) {
+        this.iException = new InternalException(other.iException);
+      }
     }
 
     public applyModel_result deepCopy() {
@@ -2841,6 +2982,7 @@ public class ModelMeshService {
       this.notHere = null;
       this.mnfException = null;
       this.mlException = null;
+      this.iException = null;
     }
 
     public byte[] getSuccess() {
@@ -2977,6 +3119,31 @@ public class ModelMeshService {
       }
     }
 
+    @org.apache.thrift.annotation.Nullable
+    public InternalException getIException() {
+      return this.iException;
+    }
+
+    public applyModel_result setIException(@org.apache.thrift.annotation.Nullable InternalException iException) {
+      this.iException = iException;
+      return this;
+    }
+
+    public void unsetIException() {
+      this.iException = null;
+    }
+
+    /** Returns true if field iException is set (has been assigned a value) and false otherwise */
+    public boolean isSetIException() {
+      return this.iException != null;
+    }
+
+    public void setIExceptionIsSet(boolean value) {
+      if (!value) {
+        this.iException = null;
+      }
+    }
+
     public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
       switch (field) {
       case SUCCESS:
@@ -3023,6 +3190,14 @@ public class ModelMeshService {
         }
         break;
 
+      case I_EXCEPTION:
+        if (value == null) {
+          unsetIException();
+        } else {
+          setIException((InternalException)value);
+        }
+        break;
+
       }
     }
 
@@ -3043,6 +3218,9 @@ public class ModelMeshService {
 
       case ML_EXCEPTION:
         return getMlException();
+
+      case I_EXCEPTION:
+        return getIException();
 
       }
       throw new java.lang.IllegalStateException();
@@ -3065,6 +3243,8 @@ public class ModelMeshService {
         return isSetMnfException();
       case ML_EXCEPTION:
         return isSetMlException();
+      case I_EXCEPTION:
+        return isSetIException();
       }
       throw new java.lang.IllegalStateException();
     }
@@ -3127,6 +3307,15 @@ public class ModelMeshService {
           return false;
       }
 
+      boolean this_present_iException = true && this.isSetIException();
+      boolean that_present_iException = true && that.isSetIException();
+      if (this_present_iException || that_present_iException) {
+        if (!(this_present_iException && that_present_iException))
+          return false;
+        if (!this.iException.equals(that.iException))
+          return false;
+      }
+
       return true;
     }
 
@@ -3153,6 +3342,10 @@ public class ModelMeshService {
       hashCode = hashCode * 8191 + ((isSetMlException()) ? 131071 : 524287);
       if (isSetMlException())
         hashCode = hashCode * 8191 + mlException.hashCode();
+
+      hashCode = hashCode * 8191 + ((isSetIException()) ? 131071 : 524287);
+      if (isSetIException())
+        hashCode = hashCode * 8191 + iException.hashCode();
 
       return hashCode;
     }
@@ -3215,6 +3408,16 @@ public class ModelMeshService {
           return lastComparison;
         }
       }
+      lastComparison = java.lang.Boolean.compare(isSetIException(), other.isSetIException());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetIException()) {
+        lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.iException, other.iException);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
       return 0;
     }
 
@@ -3273,6 +3476,14 @@ public class ModelMeshService {
         sb.append("null");
       } else {
         sb.append(this.mlException);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("iException:");
+      if (this.iException == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.iException);
       }
       first = false;
       sb.append(")");
@@ -3370,6 +3581,17 @@ public class ModelMeshService {
                 org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
               }
               break;
+            case 5: // I_EXCEPTION
+              if (schemeField.type == org.apache.thrift.protocol.TType.STRUCT) {
+                if (struct.iException == null) {
+                  struct.iException = new InternalException();
+                }
+                struct.iException.read(iprot);
+                struct.setIExceptionIsSet(true);
+              } else { 
+                org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+              }
+              break;
             default:
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
           }
@@ -3410,6 +3632,11 @@ public class ModelMeshService {
           struct.mlException.write(oprot);
           oprot.writeFieldEnd();
         }
+        if (struct.iException != null) {
+          oprot.writeFieldBegin(I_EXCEPTION_FIELD_DESC);
+          struct.iException.write(oprot);
+          oprot.writeFieldEnd();
+        }
         oprot.writeFieldStop();
         oprot.writeStructEnd();
       }
@@ -3443,7 +3670,10 @@ public class ModelMeshService {
         if (struct.isSetMlException()) {
           optionals.set(4);
         }
-        oprot.writeBitSet(optionals, 5);
+        if (struct.isSetIException()) {
+          optionals.set(5);
+        }
+        oprot.writeBitSet(optionals, 6);
         if (struct.isSetSuccess()) {
           oprot.writeBinary(struct.success);
         }
@@ -3459,12 +3689,15 @@ public class ModelMeshService {
         if (struct.isSetMlException()) {
           struct.mlException.write(oprot);
         }
+        if (struct.isSetIException()) {
+          struct.iException.write(oprot);
+        }
       }
 
       @Override
       public void read(org.apache.thrift.protocol.TProtocol prot, applyModel_result struct) throws org.apache.thrift.TException {
         org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-        java.util.BitSet incoming = iprot.readBitSet(5);
+        java.util.BitSet incoming = iprot.readBitSet(6);
         if (incoming.get(0)) {
           struct.success = iprot.readBinary();
           struct.setSuccessIsSet(true);
@@ -3496,6 +3729,13 @@ public class ModelMeshService {
           }
           struct.mlException.read(iprot);
           struct.setMlExceptionIsSet(true);
+        }
+        if (incoming.get(5)) {
+          if (struct.iException == null) {
+            struct.iException = new InternalException();
+          }
+          struct.iException.read(iprot);
+          struct.setIExceptionIsSet(true);
         }
       }
     }
