@@ -42,10 +42,13 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Model-mesh unit tests
@@ -157,8 +160,12 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
 
         //resp.body().forEach(System.out::println);
 
-        Map<String,Double> metrics = resp.body().filter(s -> !s.startsWith("#")).map(s -> s.split("\\s+"))
-                    .collect(Collectors.toMap(t -> t[0], t -> Double.parseDouble(t[1])));
+        final Pattern line = Pattern.compile("([^\\s{]+(?:\\{.+\\})?)\\s+(\\S+)");
+
+        Map<String,Double> metrics = resp.body().filter(s -> !s.startsWith("#")).map(s -> line.matcher(s))
+                .filter(Matcher::matches)
+                .collect(Collectors.toMap(m -> m.group(1), m -> Double.parseDouble(m.group(2))));
+
 
         System.out.println(metrics.size() + " metrics scraped");
 
@@ -183,6 +190,13 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
         assertEquals(40.0, metrics.get("modelmesh_request_size_bytes_bucket{method=\"predict\",code=\"OK\",le=\"2097152.0\",}"));
         assertEquals(30.0, metrics.get("modelmesh_response_size_bytes_bucket{method=\"predict\",code=\"OK\",le=\"128.0\",}"));
         assertEquals(40.0, metrics.get("modelmesh_response_size_bytes_bucket{method=\"predict\",code=\"OK\",le=\"2097152.0\",}"));
-    }
 
+        // Memory metrics
+        assertTrue(metrics.containsKey("netty_pool_mem_allocated_bytes{area=\"direct\",}"));
+        assertTrue(metrics.containsKey("jvm_memory_pool_bytes_used{pool=\"G1 Eden Space\",}"));
+        assertTrue(metrics.containsKey("jvm_buffer_pool_used_bytes{pool=\"direct\",}"));
+        assertEquals(0.0, metrics.get("jvm_buffer_pool_used_buffers{pool=\"mapped\",}")); // mmapped memory not used
+        assertTrue(metrics.containsKey("jvm_gc_collection_seconds_sum{gc=\"G1 Young Generation\",}"));
+        assertTrue(metrics.containsKey("jvm_memory_bytes_committed{area=\"heap\",}"));
+    }
 }

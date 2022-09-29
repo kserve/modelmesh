@@ -328,12 +328,6 @@
       <artifactId>simpleclient_common</artifactId>
       <version>${prometheus-version}</version>
     </dependency>
-    <!-- Prometheus metrics Hotspot JVM metrics-->
-    <dependency>
-      <groupId>io.prometheus</groupId>
-      <artifactId>simpleclient_hotspot</artifactId>
-      <version>${prometheus-version}</version>
-    </dependency>
 
     <dependency>
       <!-- used only for int list, dep can easily be removed if necessary -->
