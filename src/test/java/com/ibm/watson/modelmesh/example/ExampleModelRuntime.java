@@ -48,6 +48,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static java.lang.Integer.parseInt;
 
@@ -393,6 +395,8 @@ public class ExampleModelRuntime extends ModelRuntimeGrpc.ModelRuntimeImplBase {
             response.onCompleted();
         }
 
+        private static final Pattern ERR_REQ_PATT = Pattern.compile("test:error:code=(\\w+):message=(.+)");
+
         private PredictResponse doPredict(String modelId,
                 PredictRequest request, StreamObserver<?> response) {
 
@@ -420,6 +424,15 @@ public class ExampleModelRuntime extends ModelRuntimeGrpc.ModelRuntimeImplBase {
             String stringToClassify = request.getText();
 
             performSpecialActions(stringToClassify);
+
+            Matcher m = ERR_REQ_PATT.matcher(stringToClassify);
+            if (m.matches()) {
+                // Decode request intended to return a specific error
+                response.onError(io.grpc.Status.fromCode(
+                        io.grpc.Status.Code.valueOf(m.group(1)))
+                        .withDescription(m.group(2)).asException());
+                return null;
+            }
 
             // perform the inferencing
             String classification = model.classify(stringToClassify);
