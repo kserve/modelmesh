@@ -57,8 +57,8 @@
     <!--suppress UnresolvedMavenProperty -->
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
-    <grpc-version>1.49.2</grpc-version>
-    <netty-version>4.1.82.Final</netty-version>
+    <grpc-version>1.50.0</grpc-version>
+    <netty-version>4.1.84.Final</netty-version>
     <litelinks-version>1.7.2</litelinks-version>
     <kv-utils-version>0.5.1</kv-utils-version>
     <etcd-java-version>0.0.21</etcd-java-version>
