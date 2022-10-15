@@ -90,11 +90,11 @@ service ModelMeshService extends BaseModelMeshService {
     /** Used for internal forwarding of inferencing request/response between instances */
     list<binary> applyModelMulti(1: string modelId, 2: list<binary> input, 3: map<string,string> metadata)
         throws (1:ApplierException applierException, 2:ModelNotHereException notHere,
-            3: ModelNotFoundException mnfException, 4: ModelLoadException mlException)
+            3: ModelNotFoundException mnfException, 4: ModelLoadException mlException, 5: InternalException iException)
 
 
     // Deprecated - we now chain instead of concatenate/copy ByteBuffers
     binary applyModel(1: string modelId, 2: binary input, 3: map<string,string> metadata)
         throws (1:ApplierException applierException, 2:ModelNotHereException notHere,
-                3: ModelNotFoundException mnfException, 4: ModelLoadException mlException)
+                3: ModelNotFoundException mnfException, 4: ModelLoadException mlException, 5: InternalException iException)
 }

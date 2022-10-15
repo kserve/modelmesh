@@ -2538,7 +2538,7 @@ public abstract class ModelMesh extends ThriftService
     static final ApplierException QUEUE_BREACH_EXCEPTION = noStack(
             new ApplierException("Model queue overload", null, RESOURCE_EXHAUSTED));
 
-    static boolean isExhausted(Exception e) {
+    static boolean isExhausted(Throwable e) {
         return e instanceof ApplierException && RESOURCE_EXHAUSTED.equals(((ApplierException) e).getGrpcStatusCode());
     }
 
@@ -3551,15 +3551,18 @@ public abstract class ModelMesh extends ThriftService
                                 Object result = invokeRemote(runtimeClient, method, remoteMeth, modelId, args);
                                 return method == null && externalReq ? updateWithModelCopyInfo(result, mr) : result;
                             } catch (Exception e) {
-                                boolean callFailed = processRemoteInvocationException(e, modelId); // this may throw
+                                final Throwable t = e instanceof InvocationTargetException ? e.getCause() : e;
+                                final boolean callFailed = processRemoteInvocationException(t, modelId); // this may throw
                                 if (callFailed) {
-                                    if (e instanceof ModelLoadException) {
-                                        loadFailureSeen = (ModelLoadException) e;
+                                    if (t instanceof ModelLoadException) {
+                                        loadFailureSeen = (ModelLoadException) t;
                                         updateLocalModelRecordAfterRemoteLoadFailure(mr, loadFailureSeen);
-                                    } else if (e instanceof InternalException) {
-                                        internalFailureSeen = (InternalException) e;
-                                    } else if (isExhausted(e) && ++resExaustedCount >= MAX_RES_EXHAUSTED) {
-                                        throw e;
+                                    } else if (t instanceof InternalException) {
+                                        internalFailureSeen = (InternalException) t;
+                                    } else if (isExhausted(t) && ++resExaustedCount >= MAX_RES_EXHAUSTED) {
+                                        Throwables.throwIfInstanceOf(t, Error.class);
+                                        Throwables.throwIfInstanceOf(t, Exception.class);
+                                        throw new IllegalStateException(t); // should not happen
                                     }
                                     continue;
                                 }
@@ -3717,16 +3720,19 @@ public abstract class ModelMesh extends ThriftService
                                 Object result = invokeRemote(cacheMissClient, method, remoteMeth, modelId, args);
                                 return method == null && externalReq ? updateWithModelCopyInfo(result, mr) : result;
                             } catch (Exception e) {
-                                boolean callFailed = processRemoteInvocationException(e, modelId); // this may throw
+                                final Throwable t = e instanceof InvocationTargetException ? e.getCause() : e;
+                                final boolean callFailed = processRemoteInvocationException(t, modelId); // this may throw
                                 //TODO handle "stale" case here
                                 if (callFailed) {
-                                    if (e instanceof ModelLoadException) {
-                                        loadFailureSeen = (ModelLoadException) e;
+                                    if (t instanceof ModelLoadException) {
+                                        loadFailureSeen = (ModelLoadException) t;
                                         updateLocalModelRecordAfterRemoteLoadFailure(mr, loadFailureSeen);
-                                    } else if (e instanceof InternalException) {
-                                        internalFailureSeen = (InternalException) e;
-                                    } else if (isExhausted(e) && ++resExaustedCount >= MAX_RES_EXHAUSTED) {
-                                        throw e;
+                                    } else if (t instanceof InternalException) {
+                                        internalFailureSeen = (InternalException) t;
+                                    } else if (isExhausted(t) && ++resExaustedCount >= MAX_RES_EXHAUSTED) {
+                                        Throwables.throwIfInstanceOf(t, Error.class);
+                                        Throwables.throwIfInstanceOf(t, Exception.class);
+                                        throw new IllegalStateException(t); // should not happen
                                     }
                                     // continue inner loop
                                     if (++n >= MAX_ITERATIONS) {
@@ -4113,17 +4119,16 @@ public abstract class ModelMesh extends ThriftService
     }
 
     /**
-     * @param e
+     * @param t
      * @return true if remote call failed, false if call wasn't made (due to unavailability or
      * indication that local attempt should be made)
      * @throws TException
      */
-    protected boolean processRemoteInvocationException(Exception e, String modelId) throws TException {
-        if (e instanceof IllegalAccessException || e instanceof RuntimeException) {
+    protected boolean processRemoteInvocationException(Throwable t, String modelId) throws TException {
+        if (t instanceof IllegalAccessException || t instanceof RuntimeException) {
             throw newInternalException(
-                    "Unexpected exception while attempting remote invocation for model " + modelId, e);
+                    "Unexpected exception while attempting remote invocation for model " + modelId, t);
         } else {
-            Throwable t = e instanceof InvocationTargetException ? e.getCause() : e;
             if (t.getCause() instanceof ServiceUnavailableException) {
                 return false;
             } else if (t instanceof ModelNotHereException) {
@@ -4155,7 +4160,7 @@ public abstract class ModelMesh extends ThriftService
             }
             Throwables.throwIfInstanceOf(t, Error.class);
             Throwables.throwIfInstanceOf(t, TException.class); // other app-defined exceptions or ModelNotFoundException
-            throw new IllegalStateException(e); // should not happen
+            throw new IllegalStateException(t); // should not happen
         }
     }
 
