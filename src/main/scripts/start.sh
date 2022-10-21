@@ -333,7 +333,7 @@ echo "HEAP_SIZE_MB=${HEAP_SIZE_MB}"
 MAX_GC_PAUSE=${MAX_GC_PAUSE:-50}
 echo "MAX_GC_PAUSE=${MAX_GC_PAUSE} millisecs"
 
-if [ "MAX_DIRECT_BUFS_MB" = "" ]; then
+if [ "$MAX_DIRECT_BUFS_MB" = "" ]; then
     # Reserved headroom for JVM internals: 64MiB + 8% of heapsize
     MEM_HEADROOM_MB=$((64+8*${HEAP_SIZE_MB}/100))
     echo "MEM_HEADROOM_MB=${MEM_HEADROOM_MB}"
