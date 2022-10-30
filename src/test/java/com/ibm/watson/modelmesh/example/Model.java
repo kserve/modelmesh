@@ -16,12 +16,17 @@
 
 package com.ibm.watson.modelmesh.example;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.ibm.watson.modelmesh.example.ExampleModelRuntime.FAST_MODE;
 
 public class Model {
+
+    // Keeps track of how many load attempts there have been per model id
+    final static Map<String, Integer> loadCounts = new ConcurrentHashMap<>();
 
     final String id;
 
@@ -39,7 +44,8 @@ public class Model {
     static final Pattern LOC_PATT = Pattern.compile("SIZE_(\\d+)_(\\d+)_(\\d+)");
 
     public String load() {
-        System.out.println("Loading model " + id + "...");
+        int loadCount = loadCounts.merge(id, 1, (i1, i2) -> i1 + i2); // increment
+        System.out.println("Loading model " + id + "(count = " + loadCount + ")...");
 
         Matcher m = location != null ? LOC_PATT.matcher(location) : null;
 
@@ -61,8 +67,8 @@ public class Model {
 
         sleep(loadingTime); // simulate time to load
 
-        if (location != null && location.startsWith("FAIL_")) {
-            return location.substring(5); // simulate loading failure
+        if (loadCount <= 1 && location != null && location.startsWith("FAIL_")) {
+            return location.substring(5); // simulate loading failure for first load
         }
 
         return null;
