@@ -268,7 +268,9 @@ public abstract class ModelMesh extends ThriftService
     // time before which we don't wait for migrated models to load elsewhere during pre-shutdown
     protected static final long CUTOFF_AGE_MS = 60 * 60_000L; // 1 hour
 
-    protected static final long THREE_MINS_MS = 3 * 60_000L;
+    // when expiring failure records, use the shorter age if recent requests for the model
+    // have been seen within this time
+    protected static final long SHORT_EXPIRY_RECENT_USE_TIME_MS = 3 * 60_000L; // 3mins
 
     // max combined number of cache-hit/miss retries per request - mainly just a safeguard
     protected static final int MAX_ITERATIONS = 8;
@@ -5938,7 +5940,7 @@ public abstract class ModelMesh extends ThriftService
                                     } else {
                                         lastUsed = ce != null ? runtimeCache.getLastUsedTime(modelId) : -1L;
                                         // Use shorter expiry age if model was used in last 3 minutes
-                                        final long expiryAge = (lastUsed > 0 && (now - lastUsed) < THREE_MINS_MS)
+                                        final long expiryAge = (lastUsed > 0 && (now - lastUsed) < SHORT_EXPIRY_RECENT_USE_TIME_MS)
                                                 ? IN_USE_LOAD_FAILURE_EXPIRY_MS : LOAD_FAILURE_EXPIRY_MS;
                                         if (now - failedTime > expiryAge) {
                                             remFailed = true;
