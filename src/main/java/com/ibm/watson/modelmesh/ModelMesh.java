@@ -208,7 +208,10 @@ public abstract class ModelMesh extends ThriftService
     // used in routing decisions, gets set to Math.max(3000L, loadTimeoutMs/3)
     protected /*final*/ long defaultAssumeLoadedAfterMs;
 
-    public static final long LOAD_FAILURE_EXPIRY_MS = 600_000L; // 10mins for now
+    // time after which loading failure records expire (allowing for re-attempts)
+    public final long LOAD_FAILURE_EXPIRY_MS = getLongParameter(LOAD_FAILURE_EXPIRY_ENV_VAR, 600_000L); // default 10mins
+    // shorter expiry time for "in use" models (receiving recent requests)
+    public final long IN_USE_LOAD_FAILURE_EXPIRY_MS = (LOAD_FAILURE_EXPIRY_MS * 2) / 3;
     public static final int MAX_LOAD_FAILURES = 3;
     // if unable to invoke in this many places, don't continue to load
     public static final int MAX_LOAD_LOCATIONS = 5;
@@ -264,6 +267,10 @@ public abstract class ModelMesh extends ThriftService
 
     // time before which we don't wait for migrated models to load elsewhere during pre-shutdown
     protected static final long CUTOFF_AGE_MS = 60 * 60_000L; // 1 hour
+
+    // when expiring failure records, use the shorter age if recent requests for the model
+    // have been seen within this time
+    protected static final long SHORT_EXPIRY_RECENT_USE_TIME_MS = 3 * 60_000L; // 3mins
 
     // max combined number of cache-hit/miss retries per request - mainly just a safeguard
     protected static final int MAX_ITERATIONS = 8;
@@ -4508,14 +4515,15 @@ public abstract class ModelMesh extends ThriftService
     }
 
     // check if model load failures have breached the maximum allowed limit
-    private static void checkLoadFailureCount(ModelRecord mr, ModelLoadException loadFailureSeen)
+    private void checkLoadFailureCount(ModelRecord mr, ModelLoadException loadFailureSeen)
             throws ModelLoadException {
         Map<String, Long> failedInInstances = mr.getLoadFailedInstanceIds();
         if (!failedInInstances.isEmpty()) {
             int count = 0;
+            final long expiryCutoffTime = currentTimeMillis() - IN_USE_LOAD_FAILURE_EXPIRY_MS;
             for (Long failTime : failedInInstances.values()) {
-                if (failTime > LOAD_FAILURE_EXPIRY_MS) {
-                    count++;
+                if (failTime > expiryCutoffTime) {
+                    count++; // not yet expired
                 }
                 if (count >= MAX_LOAD_FAILURES) {
                     if (loadFailureSeen != null) {
@@ -4971,6 +4979,7 @@ public abstract class ModelMesh extends ThriftService
                     break; // success
                 }
 
+                logger.info("Encountered existing cache entry while loading model " + modelId);
                 synchronized (existCe) {
                     // A cache entry was already there - most likely that another thread
                     // in this instance is also loading this model (in this same method).
@@ -4986,6 +4995,7 @@ public abstract class ModelMesh extends ThriftService
                     if (latestMr == null) {
                         mrh[0] = null;
                         existCe.remove();
+                        logger.info("Existing cache entry for model " + modelId + " now gone");
                         return INSTANCES_CHANGED; // ModelNotFoundException will be thrown
                     }
 
@@ -4995,6 +5005,7 @@ public abstract class ModelMesh extends ThriftService
                             || !Objects.equals(latestMr.getLoadFailedInstanceIds(),
                                 mr.getLoadFailedInstanceIds())) {
                             // model registrations changed, re-start main loop
+                            logger.info("Registrations changed for " + modelId + ", will reevaluate");
                             return INSTANCES_CHANGED;
                         }
                         mr = latestMr;
@@ -5007,6 +5018,7 @@ public abstract class ModelMesh extends ThriftService
                         // Odd situation, similar to janitor logic for when a local
                         // cache entry is found without corresponding model record entry,
                         // we just "recycle" the already-loading/loaded one
+                        logger.info("Recycling existing entry for " + modelId + "(state=" + ceStateString(stateNow) + ")");
                         ce = existCe;
                         break;
                     }
@@ -5017,15 +5029,20 @@ public abstract class ModelMesh extends ThriftService
                         if (existCe.isFailed()) {
                             assert stateNow == CacheEntry.FAILED;
                             latestMr = handleUnexpectedFailedCacheEntry(existCe, mr);
-                            if (latestMr != mr) {
-                                mrh[0] = mr = latestMr;
-                                return INSTANCES_CHANGED;
+                            mrh[0] = latestMr;
+                            if (!existCe.isRemoved()) {
+                                if (latestMr != mr) {
+                                    return INSTANCES_CHANGED;
+                                }
+                                logger.info("Unexpected failed cache entry for model " + modelId
+                                        + ", treating as load failure");
+                                return existCe;
                             }
-                            mrh[0] = mr = latestMr;
-                            return existCe;
+                            // else continue to loop now that the entry has been removed
+                        } else {
+                            // We'll continue to loop in this case for now
+                            assert stateNow == CacheEntry.NEW;
                         }
-                        // We'll continue to loop in this case for now
-                        assert stateNow == CacheEntry.NEW;
                     }
 
                     existCe = null;
@@ -5202,33 +5219,40 @@ public abstract class ModelMesh extends ThriftService
         if (failure == null) {
             return mr; // safeguard timeout case (didn't see load fail but timed out waiting for it)
         }
-        if (failure instanceof ModelLoadException
-            && ((ModelLoadException) failure).getTimeout() == KVSTORE_LOAD_FAILURE) {
-            long failureAge = currentTimeMillis() - ce.loadCompleteTimestamp;
-            if (failureAge > 30_000 && failureAge > 30_000
-                    + ThreadLocalRandom.current().nextLong(30_000)) { // Randomize to avoid thunder
-                ModelRecord newMr = registry.get(ce.modelId);
-                if (newMr == null ? mr != null : (mr == null || newMr.getVersion() == mr.getVersion())) {
-                    // First replace the entry with a later-expiring one to block concurrent attempts
-                    CacheEntry<?> replacement = new CacheEntry<>(ce);
-                    if (runtimeCache.replaceQuietly(ce.modelId, ce, replacement)) {
-                        ce.remove();
-                        ce = replacement;
+        if (!(failure instanceof ModelLoadException)
+            || ((ModelLoadException) failure).getTimeout() != KVSTORE_LOAD_FAILURE) {
+            // We assume that this is an expired entry yet to be cleaned up
+            if (ce.remove()) {
+                logger.info("Removed kv-store failure cache entry for model " + ce.modelId);
+            }
+            return mr;
+        }
+
+        long failureAge = currentTimeMillis() - ce.loadCompleteTimestamp;
+        if (failureAge > 30_000 && failureAge > 30_000
+                + ThreadLocalRandom.current().nextLong(30_000)) { // Randomize to avoid thunder
+
+            ModelRecord newMr = registry.get(ce.modelId);
+            if (newMr == null ? mr == null : (mr != null && newMr.getVersion() == mr.getVersion())) {
+                // First replace the entry with a later-expiring one to block concurrent attempts
+                CacheEntry<?> replacement = new CacheEntry<>(ce);
+                if (runtimeCache.replaceQuietly(ce.modelId, ce, replacement)) {
+                    ce.remove();
+                    ce = replacement;
+                    try {
                         // this might throw if there are still KV store issues
-                        try {
-                            newMr = registry.getStrong(ce.modelId);
-                            if (ce.remove()) {
-                                logger.info("Removed kv-store failure cache entry for model " + ce.modelId);
-                            }
-                        } catch (Exception e) {
-                            // Cannot verify / still KV store problems
-                            logger.warn("Failed to retrieve model record after kv-store failure entry expiry"
-                                        + " for model " + ce.modelId);
+                        newMr = registry.getStrong(ce.modelId);
+                        if (ce.remove()) {
+                            logger.info("Removed kv-store failure cache entry for model " + ce.modelId);
                         }
+                    } catch (Exception e) {
+                        // Cannot verify / still KV store problems
+                        logger.warn("Failed to retrieve model record after kv-store failure entry expiry"
+                                + " for model " + ce.modelId);
                     }
                 }
-                return newMr;
             }
+            return newMr;
         }
         if (mr != null) {
             // Allow failure to propagate (e.g. to invokeLocalModel() after load attempt)
@@ -5907,10 +5931,22 @@ public abstract class ModelMesh extends ThriftService
                                 if (ce == null) {
                                     ce = runtimeCache.getQuietly(modelId);
                                 }
-                                long lastUsed = -1L;
+                                long lastUsed = -2L;
                                 boolean remLoaded = loaded && (ce == null || ce.isFailed());
-                                boolean remFailed = failedTime != null
-                                        && ((ce != null && !ce.isFailed()) || now - failedTime > LOAD_FAILURE_EXPIRY_MS);
+                                boolean remFailed = false;
+                                if (failedTime != null) {
+                                    if (ce != null && !ce.isFailed()) {
+                                        remFailed = true;
+                                    } else {
+                                        lastUsed = ce != null ? runtimeCache.getLastUsedTime(modelId) : -1L;
+                                        // Use shorter expiry age if model was used in last 3 minutes
+                                        final long expiryAge = (lastUsed > 0 && (now - lastUsed) < SHORT_EXPIRY_RECENT_USE_TIME_MS)
+                                                ? IN_USE_LOAD_FAILURE_EXPIRY_MS : LOAD_FAILURE_EXPIRY_MS;
+                                        if (now - failedTime > expiryAge) {
+                                            remFailed = true;
+                                        }
+                                    }
+                                }
                                 if (remLoaded || remFailed) {
                                     if (shuttingDown) {
                                         return;
@@ -5924,7 +5960,9 @@ public abstract class ModelMesh extends ThriftService
                                         mr.removeLoadFailure(instanceId);
                                     }
                                     if (ce != null) {
-                                        lastUsed = runtimeCache.getLastUsedTime(modelId);
+                                        if (lastUsed == -2) {
+                                            lastUsed = runtimeCache.getLastUsedTime(modelId);
+                                        }
                                         if (lastUsed > 0L) {
                                             mr.updateLastUsed(lastUsed);
                                         }
