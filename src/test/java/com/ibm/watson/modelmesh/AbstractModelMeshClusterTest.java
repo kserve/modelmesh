@@ -92,6 +92,11 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
         return podClosers;
     }
 
+    // Can be overridden
+    protected Map<String, String> extraEnvVars(String replicaId) {
+        return extraEnvVars();
+    }
+
     @BeforeAll
     public void initialize() throws Exception {
         //shared infrastructure
@@ -104,8 +109,10 @@ public abstract class AbstractModelMeshClusterTest extends AbstractModelMeshTest
         String replicaSetId = "RS1";
         podClosers = new PodCloser[replicaCount()];
         for (int i = 0; i < podClosers.length; i++) {
-            podClosers[i] = startModelMeshPod(kvStoreString, replicaSetId, 9000 + i * 4,
-                    extraEnvVars, extraRtEnvVars, extraJvmArgs, extraLlArgs,
+            int port = 9000 + i * 4;
+            String replicaId = Integer.toString(port);
+            podClosers[i] = startModelMeshPod(kvStoreString, replicaSetId, port,
+                    extraEnvVars(replicaId), extraRtEnvVars, extraJvmArgs, extraLlArgs,
                     useDifferentInternalPortForInference(), inheritIo());
         }
         System.out.println("started");

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.4 as build_base
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6 as build_base
 
 ARG ETCD_VERSION=v3.5.4
 
@@ -28,9 +28,7 @@ RUN true \
     && sed -i 's:#security.provider.1=SunPKCS11 ${java.home}/lib/security/nss.cfg:security.provider.12=SunPKCS11 ${java.home}/lib/security/nss.cfg:g' /usr/lib/jvm/java-17-openjdk-*/conf/security/java.security \
     && true
 
-RUN microdnf install wget tar \
-    gzip vim-common python39 maven && \
-    pip3 install -U pip setuptools
+RUN microdnf install wget tar gzip maven
 
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 
@@ -59,7 +57,7 @@ ENV MAVEN_OPTS="-Dfile.encoding=UTF8"
 RUN mvn -B package -DskipTests=true --file pom.xml
 
 ###############################################################################
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.4
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6
 
 ARG imageVersion
 ARG buildId
@@ -91,7 +89,7 @@ COPY --from=build /build/target/dockerhome/ /opt/kserve/mmesh/
 # Make this the current directory when starting the container
 WORKDIR /opt/kserve/mmesh
 
-RUN microdnf install shadow-utils hostname python39 && \
+RUN microdnf install shadow-utils hostname && \
     # Create app user
     useradd -c "Application User" -U -u ${USER} -m app && \
     chown -R app:0 /home/app && \

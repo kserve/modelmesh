@@ -43,6 +43,8 @@ public final class ModelMeshEnvVars {
     public static final String MAX_INFLIGHT_PER_COPY_ENV_VAR = "MM_MAX_INFLIGHT_PER_MODEL_COPY";
     public static final String CONC_SCALEUP_BANDWIDTH_PCT_ENV_VAR = "MM_CONC_SCALEUP_BANDWIDTH_PCT";
 
+    public static final String LOAD_FAILURE_EXPIRY_ENV_VAR = "MM_LOAD_FAILURE_EXPIRY_TIME_MS";
+
     public static final String MMESH_METRICS_ENV_VAR = "MM_METRICS";
 
     public static final String LOG_EACH_INVOKE_ENV_VAR = "MM_LOG_EACH_INVOKE";

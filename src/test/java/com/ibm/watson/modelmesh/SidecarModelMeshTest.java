@@ -124,7 +124,7 @@ public class SidecarModelMeshTest extends SingleInstanceModelMeshTest {
     public void loadFailureTest() throws Exception {
         ManagedChannel channel = NettyChannelBuilder.forAddress("localhost", 8088)
                 .usePlaintext().build();
-        String modelId = "myModel";
+        String modelId = "myModel_" + getClass().getSimpleName();
         ModelMeshBlockingStub manageModels = ModelMeshGrpc.newBlockingStub(channel);
         try {
             String errorMessage = "load should fail with this error";

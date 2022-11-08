@@ -322,10 +322,6 @@ fi
 
 echo "MEM_LIMIT_MB=${MEM_LIMIT_MB}"
 
-if [ "$HEAP_SIZE" != "" ]; then
-	echo "** NOTE: HEAP_SIZE env var is deprecated, please remove it"
-fi
-
 if [ "$HEAP_SIZE_MB" = "" ]; then
     # Default heap size to MIN(41% of mem-limit, 640MiB)
     HS=$((${MEM_LIMIT_MB}*41/100))
@@ -334,14 +330,16 @@ if [ "$HEAP_SIZE_MB" = "" ]; then
 fi
 echo "HEAP_SIZE_MB=${HEAP_SIZE_MB}"
 
-# Reserved headroom for JVM internals: 64MiB + 20% of heapsize
-MEM_HEADROOM_MB=$((64+${HEAP_SIZE_MB}/5))
-echo "MEM_HEADROOM_MB=${MEM_HEADROOM_MB}"
-
 MAX_GC_PAUSE=${MAX_GC_PAUSE:-50}
 echo "MAX_GC_PAUSE=${MAX_GC_PAUSE} millisecs"
 
-MAX_DIRECT_BUFS_MB=$((${MEM_LIMIT_MB}-${HEAP_SIZE_MB}-192))
+if [ "$MAX_DIRECT_BUFS_MB" = "" ]; then
+    # Reserved headroom for JVM internals: 64MiB + 8% of heapsize
+    MEM_HEADROOM_MB=$((64+8*${HEAP_SIZE_MB}/100))
+    echo "MEM_HEADROOM_MB=${MEM_HEADROOM_MB}"
+
+    MAX_DIRECT_BUFS_MB=$((${MEM_LIMIT_MB}-${HEAP_SIZE_MB}-${MEM_HEADROOM_MB}))
+fi
 echo "MAX_DIRECT_BUFS_MB=${MAX_DIRECT_BUFS_MB}"
 
 # litelinks kubernetes health probe - defaults to port 8089
@@ -373,8 +371,8 @@ NETTY_DIRECTBUF_ARGS="-Dio.netty.tryReflectionSetAccessible=true --add-opens=jav
 # this defaults to equal max heap, which can result in container OOMKilled
 MAX_DIRECT_BYTES="$((${MAX_DIRECT_BUFS_MB}*1024*1024))"
 # Java native direct memory setting shouldn't be used since all
-# direct buffers are allocated by netty, so set it small (32MiB)
-JAVA_MAXDIRECT_ARG="-XX:MaxDirectMemorySize=33554432"
+# direct buffers are allocated by netty, so set it small (20MiB)
+JAVA_MAXDIRECT_ARG="-XX:MaxDirectMemorySize=20971520"
 # This defaults to match the java setting so we set it explicitly to desired val
 NETTY_MAXDIRECT_ARG="-Dio.netty.maxDirectMemory=${MAX_DIRECT_BYTES}"
 # Ensure that grpc-java shares a single pooled buffer allocator with other netty usage (e.g. litelinks)

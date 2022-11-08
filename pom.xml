@@ -57,24 +57,25 @@
     <!--suppress UnresolvedMavenProperty -->
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
-    <grpc-version>1.49.0</grpc-version>
-    <netty-version>4.1.80.Final</netty-version>
+    <grpc-version>1.50.2</grpc-version>
+    <netty-version>4.1.84.Final</netty-version>
     <litelinks-version>1.7.2</litelinks-version>
     <kv-utils-version>0.5.1</kv-utils-version>
-    <etcd-java-version>0.0.21</etcd-java-version>
-    <protobuf-version>3.21.5</protobuf-version>
-    <annotation-version>9.0.65</annotation-version>
+    <etcd-java-version>0.0.22</etcd-java-version>
+    <protobuf-version>3.21.9</protobuf-version>
+    <annotation-version>9.0.68</annotation-version>
     <guava-version>31.1-jre</guava-version>
-    <jackson-databind-version>2.13.3</jackson-databind-version>
-    <gson-version>2.9.1</gson-version>
+    <jackson-databind-version>2.13.4.2</jackson-databind-version>
+    <gson-version>2.10</gson-version>
+    <thrift-version>0.16.0</thrift-version>
     <eclipse-collections-version>11.1.0</eclipse-collections-version>
-    <log4j2-version>2.18.0</log4j2-version>
+    <log4j2-version>2.19.0</log4j2-version>
     <slf4j-version>1.7.36</slf4j-version>
     <!-- Care must be taken when updating the prometheus client lib version
          since we have some custom optimized extensions to this -->
     <prometheus-version>0.9.0</prometheus-version>
     <bouncycastle-version>1.70</bouncycastle-version>
-    <junit-version>5.9.0</junit-version>
+    <junit-version>5.9.1</junit-version>
 
     <dockerhome>${project.build.directory}/dockerhome</dockerhome>
     <skipTests>false</skipTests>
@@ -328,12 +329,6 @@
       <artifactId>simpleclient_common</artifactId>
       <version>${prometheus-version}</version>
     </dependency>
-    <!-- Prometheus metrics Hotspot JVM metrics-->
-    <dependency>
-      <groupId>io.prometheus</groupId>
-      <artifactId>simpleclient_hotspot</artifactId>
-      <version>${prometheus-version}</version>
-    </dependency>
 
     <dependency>
       <!-- used only for int list, dep can easily be removed if necessary -->
@@ -515,6 +510,12 @@
         <version>${grpc-version}</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+      <dependency>
+        <!-- override litelinks' version with latest -->
+        <groupId>org.apache.thrift</groupId>
+        <artifactId>libthrift</artifactId>
+        <version>${thrift-version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
