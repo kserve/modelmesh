@@ -57,17 +57,17 @@
     <!--suppress UnresolvedMavenProperty -->
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
-    <grpc-version>1.51.0</grpc-version>
-    <netty-version>4.1.85.Final</netty-version>
+    <grpc-version>1.51.1</grpc-version>
+    <netty-version>4.1.86.Final</netty-version>
     <litelinks-version>1.7.2</litelinks-version>
     <kv-utils-version>0.5.1</kv-utils-version>
     <etcd-java-version>0.0.22</etcd-java-version>
-    <protobuf-version>3.21.10</protobuf-version>
-    <annotation-version>9.0.68</annotation-version>
+    <protobuf-version>3.21.12</protobuf-version>
+    <annotation-version>9.0.70</annotation-version>
     <guava-version>31.1-jre</guava-version>
     <jackson-databind-version>2.14.1</jackson-databind-version>
     <gson-version>2.10</gson-version>
-    <thrift-version>0.16.0</thrift-version>
+    <thrift-version>0.17.0</thrift-version>
     <eclipse-collections-version>11.1.0</eclipse-collections-version>
     <log4j2-version>2.19.0</log4j2-version>
     <slf4j-version>1.7.36</slf4j-version>
