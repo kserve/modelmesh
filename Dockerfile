@@ -14,6 +14,9 @@
 
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6 as build_base
 
+# https://blog.thesparktree.com/docker-multi-arch-github-actions#architecture-specific-dockerfile-instructions
+ARG TARGETARCH=amd64
+
 ARG ETCD_VERSION=v3.5.4
 
 LABEL image="build_base"
@@ -33,9 +36,9 @@ RUN microdnf install wget tar gzip maven
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 
 # Install etcd -- used for CI tests
-RUN wget -q https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-amd64.tar.gz && \
+RUN wget -q https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-${TARGETARCH}.tar.gz && \
     mkdir -p /usr/lib/etcd && \
-    tar xzf etcd-*-linux-amd64.tar.gz -C /usr/lib/etcd --strip-components=1 --no-same-owner && \
+    tar xzf etcd-*-linux-${TARGETARCH}.tar.gz -C /usr/lib/etcd --strip-components=1 --no-same-owner && \
     rm -rf etcd*.gz
 
 ENV PATH="/usr/lib/etcd:$PATH"
