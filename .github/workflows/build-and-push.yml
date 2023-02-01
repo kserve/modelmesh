@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      IMAGE_NAME: modelmesh
+      IMAGE_NAME: kserve/modelmesh
 
     steps:
       - uses: actions/checkout@v2
@@ -45,21 +45,13 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
 
-      - name: export version variable
+      - name: Export version variables
         run: |
           GIT_COMMIT=$(git rev-parse HEAD)
           BUILD_ID=$(date '+%Y%m%d')-$(git rev-parse HEAD | cut -c -5)
-          
-          IMAGE_ID=kserve/$IMAGE_NAME
-
-          # Change all uppercase to lowercase
-          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
 
           # Strip git ref prefix from version
           VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
-
-          # Strip "v" prefix from tag name
-          # [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
 
           # Use Docker `latest` tag convention
           [ "$VERSION" == "main" ] && VERSION=latest
@@ -67,7 +59,6 @@ jobs:
           echo "GIT_COMMIT=$GIT_COMMIT" >> $GITHUB_ENV
           echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "IMAGE_ID=$IMAGE_ID" >> $GITHUB_ENV
 
       - name: Build and push
         uses: docker/build-push-action@v3
@@ -78,7 +69,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           push: ${{ github.event_name == 'push' }}
-          tags: ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+          tags: ${{ env.IMAGE_NAME }}:${{ env.VERSION }}
           build-args: |
             imageVersion=${{ env.VERSION }}
             buildId=${{ env.BUILD_ID }}
