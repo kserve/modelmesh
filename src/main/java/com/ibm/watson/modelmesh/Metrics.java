@@ -155,7 +155,7 @@ interface Metrics extends AutoCloseable {
         private final boolean shortNames;
         private final EnumMap<Metric, Collector> metricsMap = new EnumMap<>(Metric.class);
 
-        public PrometheusMetrics(Map<String, String> params) throws Exception {
+        public PrometheusMetrics(Map<String, String> params, Map<String, String> customParams) throws Exception {
             int port = 2112;
             boolean shortNames = true;
             boolean https = true;
@@ -228,6 +228,21 @@ interface Metrics extends AutoCloseable {
                 if (!m.global) {
                     registry.register(collector);
                 }
+            }
+
+            // Custom info metrics
+            if (!customParams.isEmpty()){
+                @SuppressWarnings("rawtypes")
+                SimpleCollector.Builder builder;
+                builder = Gauge.build();
+                Collector collector = (
+                    builder
+                    .name(params.get("metric_name"))
+                    .help("Custom Info Metrics")
+                    .labelNames(params.get("deployment"), params.get("slot"), params.get("component"), params.get("group"))
+                    .create()
+                );
+                registry.register(collector);
             }
 
             this.metricServer = new NettyServer(registry, port, https);
