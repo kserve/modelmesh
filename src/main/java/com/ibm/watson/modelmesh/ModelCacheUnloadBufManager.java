@@ -95,6 +95,15 @@ final class ModelCacheUnloadBufManager {
         return UNLOAD_BUFF.getWeight();
     }
 
+    // For instrumentation/diagnostics only
+    int getTotalUnloadingWeight() {
+        return totalUnloadingWeight;
+    }
+    // For instrumentation/diagnostics only
+    long getTotalModelCacheOccupancy() {
+        return totalModelCacheOccupancy;
+    }
+
     void removeUnloadBufferEntry(Map<String, ?> entries) { //TODO TBD maybe static
         entries.remove(UNLOAD_BUFFER_CACHE_KEY);
     }

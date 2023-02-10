@@ -170,7 +170,7 @@ interface Metrics extends AutoCloseable {
                     }
                     break;
                 case "fq_names":
-                    shortNames = "true".equalsIgnoreCase(ent.getValue());
+                    shortNames = !"true".equalsIgnoreCase(ent.getValue());
                     break;
                 case "scheme":
                     if ("http".equals(ent.getValue())) {
@@ -395,7 +395,7 @@ interface Metrics extends AutoCloseable {
                     legacy = "true".equalsIgnoreCase(ent.getValue());
                     break;
                 case "fq_names":
-                    shortNames = "true".equalsIgnoreCase(ent.getValue());
+                    shortNames = !"true".equalsIgnoreCase(ent.getValue());
                     break;
                 default:
                     throw new Exception("Unrecognized metrics config parameter: " + ent.getKey());
