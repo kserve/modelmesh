@@ -46,6 +46,7 @@ import com.ibm.watson.modelmesh.api.UnregisterModelRequest;
 import com.ibm.watson.modelmesh.api.UnregisterModelResponse;
 import com.ibm.watson.modelmesh.api.VModelStatusInfo;
 import com.ibm.watson.modelmesh.payload.Payload;
+import com.ibm.watson.modelmesh.payload.PayloadProcessor;
 import com.ibm.watson.modelmesh.thrift.ApplierException;
 import com.ibm.watson.modelmesh.thrift.InvalidInputException;
 import com.ibm.watson.modelmesh.thrift.InvalidStateException;
@@ -157,6 +158,8 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
     // null if header logging is not enabled.  
     protected final LogRequestHeaders logHeaders;
 
+    private final PayloadProcessor payloadProcessor;
+
     /**
      * Create <b>and start</b> the server.
      *
@@ -172,16 +175,18 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
      * @param maxConnectionAge      in seconds
      * @param maxConnectionAgeGrace in seconds, custom grace time for graceful connection termination
      * @param logHeaders
+     * @param payloadProcessor      a processor of payloads
      * @throws IOException
      */
     public ModelMeshApi(SidecarModelMesh delegate, VModelManager vmm, int port, File keyCert, File privateKey,
             String privateKeyPassphrase, ClientAuth clientAuth, File[] trustCerts,
             int maxMessageSize, int maxHeadersSize, long maxConnectionAge, long maxConnectionAgeGrace,
-            LogRequestHeaders logHeaders) throws IOException {
+            LogRequestHeaders logHeaders, PayloadProcessor payloadProcessor) throws IOException {
 
         this.delegate = delegate;
         this.vmm = vmm;
         this.logHeaders = logHeaders;
+        this.payloadProcessor = payloadProcessor;
 
         this.multiParallelism = getMultiParallelism();
 
@@ -722,7 +727,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         } finally {
                             releaseReqMessage();
                             try {
-                                delegate.payloadProcessor.processRequest(new Payload(modelId, String.valueOf(isVModel),
+                                payloadProcessor.processRequest(new Payload(modelId, String.valueOf(isVModel),
                                                                                      methodName, headers, reqMessage));
                             } catch (Throwable t) {
                                 // ignore it
@@ -733,8 +738,8 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         call.sendHeaders(response.metadata);
                         call.sendMessage(response.data);
                         try {
-                            delegate.payloadProcessor.processResponse(new Payload(modelId, String.valueOf(isVModel),
-                                                                                  methodName, response.metadata, response.data));
+                            payloadProcessor.processResponse(new Payload(modelId, String.valueOf(isVModel), methodName,
+                                                                         response.metadata, response.data));
                         } catch (Throwable t) {
                             // ignore it
                         }

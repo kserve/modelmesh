@@ -437,9 +437,7 @@ public abstract class ModelMesh extends ThriftService
         registeredProcessors.put(fileWriter.getName(), fileWriter);
     }
 
-    protected final PayloadProcessor payloadProcessor = initPayloadProcessors();
-
-    private static PayloadProcessor initPayloadProcessors() {
+    private PayloadProcessor initPayloadProcessor() {
         String payloadProcessorsDefinitions = System.getenv(MM_PAYLOAD_PROCESSORS);
         List<PayloadProcessor> payloadProcessors = new ArrayList<>();
         if (payloadProcessorsDefinitions != null) {
@@ -899,7 +897,7 @@ public abstract class ModelMesh extends ThriftService
 
             grpcServer = new ModelMeshApi((SidecarModelMesh) this, vModelManager, GRPC_PORT, keyCertFile, privateKeyFile,
                     privateKeyPassphrase, clientAuth, caCertFiles, maxGrpcMessageSize, maxGrpcHeadersSize,
-                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders);
+                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders, initPayloadProcessor());
         }
 
         if (grpcServer != null) {
