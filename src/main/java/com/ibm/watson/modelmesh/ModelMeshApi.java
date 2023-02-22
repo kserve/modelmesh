@@ -45,6 +45,7 @@ import com.ibm.watson.modelmesh.api.SetVModelRequest;
 import com.ibm.watson.modelmesh.api.UnregisterModelRequest;
 import com.ibm.watson.modelmesh.api.UnregisterModelResponse;
 import com.ibm.watson.modelmesh.api.VModelStatusInfo;
+import com.ibm.watson.modelmesh.payload.Payload;
 import com.ibm.watson.modelmesh.thrift.ApplierException;
 import com.ibm.watson.modelmesh.thrift.InvalidInputException;
 import com.ibm.watson.modelmesh.thrift.InvalidStateException;
@@ -694,12 +695,15 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         logHeaders.addToMDC(headers); // MDC cleared in finally block
                     }
                     ModelResponse response = null;
+                    String modelId = null;
                     try {
                         try {
                             String balancedMetaVal = headers.get(BALANCED_META_KEY);
                             Iterator<String> midIt = modelIds.iterator();
                             // guaranteed at least one
-                            String modelId = validateModelId(midIt.next(), isVModel);
+                            modelId = validateModelId(midIt.next(), isVModel);
+                            // process request payload
+
                             if (!midIt.hasNext()) {
                                 // single model case (most common)
                                 response = callModel(modelId, isVModel, methodName,
@@ -717,11 +721,23 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                             }
                         } finally {
                             releaseReqMessage();
+                            try {
+                                delegate.payloadProcessor.processRequest(new Payload(modelId, String.valueOf(isVModel),
+                                                                                     methodName, headers, reqMessage));
+                            } catch (Throwable t) {
+                                // ignore it
+                            }
                         }
 
                         respSize = response.data.readableBytes();
                         call.sendHeaders(response.metadata);
                         call.sendMessage(response.data);
+                        try {
+                            delegate.payloadProcessor.processResponse(new Payload(modelId, String.valueOf(isVModel),
+                                                                                  methodName, response.metadata, response.data));
+                        } catch (Throwable t) {
+                            // ignore it
+                        }
                         response = null;
                     } finally {
                         if (response != null) {

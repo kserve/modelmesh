@@ -14,7 +14,7 @@
  * under the License.
  */
 
-package com.ibm.watson.modelmesh.processor;
+package com.ibm.watson.modelmesh.payload;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -29,14 +29,13 @@ class AsyncPayloadProcessorTest {
 
     @Test
     void testPayloadProcessing() {
-        AtomicInteger integer = new AtomicInteger();
-        DummyPayloadProcessor dummyPayloadProcessor = new DummyPayloadProcessor(integer);
+        DummyPayloadProcessor dummyPayloadProcessor = new DummyPayloadProcessor();
 
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
         AsyncPayloadProcessor payloadProcessor = new AsyncPayloadProcessor(dummyPayloadProcessor, 1, TimeUnit.NANOSECONDS, scheduler);
 
         for (int i = 0; i < 10; i++) {
-            payloadProcessor.process(new Payload(null, null, null, null, null));
+            payloadProcessor.processRequest(new Payload(null, null, null, null, null));
         }
         try {
             assertFalse(scheduler.awaitTermination(1, TimeUnit.SECONDS));
@@ -44,13 +43,13 @@ class AsyncPayloadProcessorTest {
             // ignore it
         }
         for (int i = 0; i < 10; i++) {
-            payloadProcessor.process(new Payload(null, null, null, null, null));
+            payloadProcessor.processRequest(new Payload(null, null, null, null, null));
         }
         try {
             assertFalse(scheduler.awaitTermination(1, TimeUnit.SECONDS));
         } catch (InterruptedException e) {
             // ignore it
         }
-        assertEquals(20, integer.get());
+        assertEquals(20, dummyPayloadProcessor.getRequestCount().get());
     }
 }

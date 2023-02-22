@@ -14,7 +14,7 @@
  * under the License.
  */
 
-package com.ibm.watson.modelmesh.processor;
+package com.ibm.watson.modelmesh.payload;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -26,19 +26,24 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
 
     private final PayloadProcessor delegate;
 
-    private final Queue<Payload> payloads = new ConcurrentLinkedQueue<>();
+    private final Queue<Payload> requestPayloads = new ConcurrentLinkedQueue<>();
+    private final Queue<Payload> responsePayloads = new ConcurrentLinkedQueue<>();
 
     public AsyncPayloadProcessor(PayloadProcessor delegate) {
-        this(delegate, 1, TimeUnit.MINUTES, Executors.newScheduledThreadPool(1));
+        this(delegate, 1, TimeUnit.NANOSECONDS, Executors.newScheduledThreadPool(1));
     }
 
     public AsyncPayloadProcessor(PayloadProcessor delegate, int delay, TimeUnit timeUnit,
                                  ScheduledExecutorService executorService) {
         this.delegate = delegate;
+
         executorService.scheduleWithFixedDelay(() -> {
             Payload p;
-            while ((p = payloads.poll()) != null) {
-                delegate.process(p);
+            while ((p = requestPayloads.poll()) != null) {
+                delegate.processRequest(p);
+            }
+            while ((p = responsePayloads.poll()) != null) {
+                delegate.processResponse(p);
             }
         }, 0, delay, timeUnit);
     }
@@ -49,7 +54,12 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
     }
 
     @Override
-    public void process(Payload payload) {
-        payloads.add(payload);
+    public void processRequest(Payload payload) {
+        requestPayloads.add(payload);
+    }
+
+    @Override
+    public void processResponse(Payload payload) {
+        responsePayloads.add(payload);
     }
 }

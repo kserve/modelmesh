@@ -14,7 +14,7 @@
  * under the License.
  */
 
-package com.ibm.watson.modelmesh.processor;
+package com.ibm.watson.modelmesh.payload;
 
 import java.util.List;
 
@@ -32,9 +32,24 @@ public class CompositePayloadProcessor implements PayloadProcessor {
     }
 
     @Override
-    public void process(Payload payload) {
+    public void processRequest(Payload payload) {
         for (PayloadProcessor processor : this.delegates) {
-            processor.process(payload);
+            try {
+                processor.processRequest(payload);
+            } catch (Throwable t) {
+                // ignore it
+            }
+        }
+    }
+
+    @Override
+    public void processResponse(Payload payload) {
+        for (PayloadProcessor processor : this.delegates) {
+            try {
+                processor.processResponse(payload);
+            } catch (Throwable t) {
+                // ignore it
+            }
         }
     }
 }

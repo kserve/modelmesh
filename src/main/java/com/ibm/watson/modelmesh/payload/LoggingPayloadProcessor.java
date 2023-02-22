@@ -14,25 +14,27 @@
  * under the License.
  */
 
-package com.ibm.watson.modelmesh.processor;
+package com.ibm.watson.modelmesh.payload;
 
-import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-class DummyPayloadProcessor implements PayloadProcessor {
+public class LoggingPayloadProcessor implements PayloadProcessor {
 
-    private final AtomicInteger integer;
-
-    DummyPayloadProcessor(AtomicInteger integer) {
-        this.integer = integer;
-    }
+    private final Logger LOG = LoggerFactory.getLogger(getClass());
 
     @Override
     public String getName() {
-        return "dummy";
+        return "logger";
     }
 
     @Override
-    public void process(Payload payload) {
-        this.integer.incrementAndGet();
+    public void processRequest(Payload payload) {
+        LOG.info("Request payload: {}", payload);
+    }
+
+    @Override
+    public void processResponse(Payload payload) {
+        LOG.info("Response payload: {}", payload);
     }
 }

@@ -14,22 +14,13 @@
  * under the License.
  */
 
-package com.ibm.watson.modelmesh.processor;
+package com.ibm.watson.modelmesh.payload;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+public interface PayloadProcessor {
 
-public class LoggingPayloadProcessor implements PayloadProcessor {
+    String getName();
 
-    private final Logger LOG = LoggerFactory.getLogger(getClass());
+    void processRequest(Payload payload);
 
-    @Override
-    public String getName() {
-        return "logger";
-    }
-
-    @Override
-    public void process(Payload payload) {
-        LOG.info("Payload: {}", payload);
-    }
+    void processResponse(Payload payload);
 }

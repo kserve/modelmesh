@@ -14,11 +14,10 @@
  * under the License.
  */
 
-package com.ibm.watson.modelmesh.processor;
+package com.ibm.watson.modelmesh.payload;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
@@ -29,16 +28,17 @@ class CompositePayloadProcessorTest {
     @Test
     void testPayloadProcessing() {
         List<PayloadProcessor> delegates = new ArrayList<>();
-        AtomicInteger integerOne = new AtomicInteger();
-        delegates.add(new DummyPayloadProcessor(integerOne));
-        AtomicInteger integerTwo = new AtomicInteger();
-        delegates.add(new DummyPayloadProcessor(integerTwo));
+        delegates.add(new DummyPayloadProcessor());
+        delegates.add(new DummyPayloadProcessor());
 
         CompositePayloadProcessor payloadProcessor = new CompositePayloadProcessor(delegates);
         for (int i = 0; i < 10; i++) {
-            payloadProcessor.process(new Payload(null, null, null, null, null));
+            payloadProcessor.processRequest(new Payload(null, null, null, null, null));
+            payloadProcessor.processResponse(new Payload(null, null, null, null, null));
         }
-        assertEquals(10, integerOne.get());
-        assertEquals(10, integerTwo.get());
+        for (PayloadProcessor p : delegates) {
+            DummyPayloadProcessor dummyPayloadProcessor = (DummyPayloadProcessor) p;
+            assertEquals(10, dummyPayloadProcessor.getRequestCount().get());
+        }
     }
 }

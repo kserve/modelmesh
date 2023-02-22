@@ -61,12 +61,13 @@ import com.ibm.watson.modelmesh.ModelRecord.FailureInfo;
 import com.ibm.watson.modelmesh.TypeConstraintManager.ProhibitedTypeSet;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap.EvictionListenerWithTime;
-import com.ibm.watson.modelmesh.processor.AsyncPayloadProcessor;
-import com.ibm.watson.modelmesh.processor.CompositePayloadProcessor;
-import com.ibm.watson.modelmesh.processor.LoggingPayloadProcessor;
-import com.ibm.watson.modelmesh.processor.MatchingPayloadProcessor;
-import com.ibm.watson.modelmesh.processor.Payload;
-import com.ibm.watson.modelmesh.processor.PayloadProcessor;
+import com.ibm.watson.modelmesh.payload.AsyncPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.CompositePayloadProcessor;
+import com.ibm.watson.modelmesh.payload.FileWriterPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.LoggingPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.MatchingPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.Payload;
+import com.ibm.watson.modelmesh.payload.PayloadProcessor;
 import com.ibm.watson.modelmesh.thrift.ApplierException;
 import com.ibm.watson.modelmesh.thrift.BaseModelMeshService;
 import com.ibm.watson.modelmesh.thrift.InternalException;
@@ -433,9 +434,11 @@ public abstract class ModelMesh extends ThriftService
     static {
         PayloadProcessor logger = new LoggingPayloadProcessor();
         registeredProcessors.put(logger.getName(), logger);
+        PayloadProcessor fileWriter = new FileWriterPayloadProcessor();
+        registeredProcessors.put(fileWriter.getName(), fileWriter);
     }
 
-    private static final PayloadProcessor payloadProcessor = initPayloadProcessors();
+    protected final PayloadProcessor payloadProcessor = initPayloadProcessors();
 
     public static final String PAYLOAD_PROCESSORS = "PAYLOAD_PROCESSORS";
 
@@ -3470,9 +3473,7 @@ public abstract class ModelMesh extends ThriftService
                     throw new ModelNotHereException(instanceId, modelId);
                 }
                 try {
-                    Object result = invokeLocalModel(ce, method, args, modelId);
-                    payloadProcessor.process(new Payload(modelId, method, remoteMeth, args, result));
-                    return result;
+                    return invokeLocalModel(ce, method, args, modelId);
                 } catch (ModelLoadException mle) {
                     mr = registry.get(modelId);
                     if (mr == null || !mr.loadFailedInInstance(instanceId)) {
@@ -3610,7 +3611,6 @@ public abstract class ModelMesh extends ThriftService
                                                  + filtered);
                                 }
                                 Object result = invokeRemote(runtimeClient, method, remoteMeth, modelId, args);
-                                payloadProcessor.process(new Payload(modelId, method, remoteMeth, args, result));
                                 return method == null && externalReq ? updateWithModelCopyInfo(result, mr) : result;
                             } catch (Exception e) {
                                 final Throwable t = e instanceof InvocationTargetException ? e.getCause() : e;
@@ -3688,7 +3688,6 @@ public abstract class ModelMesh extends ThriftService
                                 }
                                 try {
                                     Object result = invokeLocalModel(cacheEntry, method, args, modelId);
-                                    payloadProcessor.process(new Payload(modelId, method, remoteMeth, args, result));
                                     return method == null && externalReq ? updateWithModelCopyInfo(result, mr) : result;
                                 } finally {
                                     if (!favourSelfForHits) {
@@ -3783,7 +3782,6 @@ public abstract class ModelMesh extends ThriftService
                                 // this will throw ServiceUnavailableException (rather than actually making
                                 // any remote invocation) if the LB logic decides it should be loaded locally
                                 Object result = invokeRemote(cacheMissClient, method, remoteMeth, modelId, args);
-                                payloadProcessor.process(new Payload(modelId, method, remoteMeth, args, result));
                                 return method == null && externalReq ? updateWithModelCopyInfo(result, mr) : result;
                             } catch (Exception e) {
                                 final Throwable t = e instanceof InvocationTargetException ? e.getCause() : e;
@@ -3910,7 +3908,6 @@ public abstract class ModelMesh extends ThriftService
                         // invoke model
                         try {
                             Object result = invokeLocalModel(cacheEntry, method, args, modelId);
-                            payloadProcessor.process(new Payload(modelId, method, remoteMeth, args, result));
                             return method == null && externalReq ? updateWithModelCopyInfo(result, mr) : result;
                         } catch (ModelNotHereException e) {
                             if (loadTargetFilter != null) loadTargetFilter.remove(instanceId);
