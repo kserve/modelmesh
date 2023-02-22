@@ -66,7 +66,6 @@ import com.ibm.watson.modelmesh.payload.CompositePayloadProcessor;
 import com.ibm.watson.modelmesh.payload.FileWriterPayloadProcessor;
 import com.ibm.watson.modelmesh.payload.LoggingPayloadProcessor;
 import com.ibm.watson.modelmesh.payload.MatchingPayloadProcessor;
-import com.ibm.watson.modelmesh.payload.Payload;
 import com.ibm.watson.modelmesh.payload.PayloadProcessor;
 import com.ibm.watson.modelmesh.thrift.ApplierException;
 import com.ibm.watson.modelmesh.thrift.BaseModelMeshService;
@@ -440,22 +439,24 @@ public abstract class ModelMesh extends ThriftService
 
     protected final PayloadProcessor payloadProcessor = initPayloadProcessors();
 
-    public static final String PAYLOAD_PROCESSORS = "PAYLOAD_PROCESSORS";
-
     private static PayloadProcessor initPayloadProcessors() {
-        String payloadProcessorsDefinitions = System.getenv(PAYLOAD_PROCESSORS);
+        String payloadProcessorsDefinitions = System.getenv(MM_PAYLOAD_PROCESSORS);
         List<PayloadProcessor> payloadProcessors = new ArrayList<>();
         if (payloadProcessorsDefinitions != null) {
             for (String processorDefinition : payloadProcessorsDefinitions.split(" ")) {
-                URI uri = URI.create(processorDefinition);
-                String processorName = uri.getScheme();
-                PayloadProcessor processor = registeredProcessors.get(processorName);
-                if (processor != null) {
-                    String modelId = uri.getAuthority();
-                    String method = uri.getQuery();
-                    MatchingPayloadProcessor p = new MatchingPayloadProcessor(processor, method, modelId);
-                    payloadProcessors.add(p);
-                    logger.info("Added PayloadProcessor {}", p.getName());
+                try {
+                    URI uri = URI.create(processorDefinition);
+                    String processorName = uri.getScheme();
+                    PayloadProcessor processor = registeredProcessors.get(processorName);
+                    if (processor != null) {
+                        String modelId = uri.getAuthority();
+                        String method = uri.getQuery();
+                        MatchingPayloadProcessor p = new MatchingPayloadProcessor(processor, method, modelId);
+                        payloadProcessors.add(p);
+                        logger.info("Added PayloadProcessor {}", p.getName());
+                    }
+                } catch (IllegalArgumentException iae) {
+                    logger.error("Unable to parse PayloadProcessor URI definition {}", processorDefinition);
                 }
             }
         }

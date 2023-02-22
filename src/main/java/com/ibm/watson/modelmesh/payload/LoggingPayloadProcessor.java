@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
 
 public class LoggingPayloadProcessor implements PayloadProcessor {
 
-    private final Logger LOG = LoggerFactory.getLogger(getClass());
+    private final static Logger LOG = LoggerFactory.getLogger(LoggingPayloadProcessor.class);
 
     @Override
     public String getName() {

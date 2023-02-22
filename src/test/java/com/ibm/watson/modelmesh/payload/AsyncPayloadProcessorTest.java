@@ -15,15 +15,16 @@
  */
 
 package com.ibm.watson.modelmesh.payload;
+import java.util.Arrays;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsyncPayloadProcessorTest {
 
@@ -32,7 +33,7 @@ class AsyncPayloadProcessorTest {
         DummyPayloadProcessor dummyPayloadProcessor = new DummyPayloadProcessor();
 
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
-        AsyncPayloadProcessor payloadProcessor = new AsyncPayloadProcessor(dummyPayloadProcessor, 1, TimeUnit.NANOSECONDS, scheduler);
+        AsyncPayloadProcessor payloadProcessor = new AsyncPayloadProcessor(dummyPayloadProcessor, 1, TimeUnit.NANOSECONDS, scheduler, 100);
 
         for (int i = 0; i < 10; i++) {
             payloadProcessor.processRequest(new Payload(null, null, null, null, null));
@@ -51,5 +52,16 @@ class AsyncPayloadProcessorTest {
             // ignore it
         }
         assertEquals(20, dummyPayloadProcessor.getRequestCount().get());
+    }
+
+    @Test
+    void testQueue() {
+        AsyncPayloadProcessor.FixedSizeConcurrentLinkedDeque<String> queue = new AsyncPayloadProcessor.FixedSizeConcurrentLinkedDeque<>(5);
+        String[] strings = "a b c d e f g".split(" ");
+        for (String s : strings) {
+            queue.offer(s);
+        }
+        assertTrue(queue.containsAll(Arrays.asList("c d e f g".split(" "))));
+        assertFalse(queue.containsAll(Arrays.asList("a b".split(" "))));
     }
 }

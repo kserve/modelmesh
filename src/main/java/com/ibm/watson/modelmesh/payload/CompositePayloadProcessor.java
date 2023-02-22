@@ -18,7 +18,12 @@ package com.ibm.watson.modelmesh.payload;
 
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class CompositePayloadProcessor implements PayloadProcessor {
+
+    private static final Logger logger = LoggerFactory.getLogger(CompositePayloadProcessor.class);
 
     private final List<PayloadProcessor> delegates;
 
@@ -37,7 +42,7 @@ public class CompositePayloadProcessor implements PayloadProcessor {
             try {
                 processor.processRequest(payload);
             } catch (Throwable t) {
-                // ignore it
+                logger.error("PayloadProcessor {} failed processing request payload due to {}", processor.getName(), t.getMessage());
             }
         }
     }
@@ -48,7 +53,7 @@ public class CompositePayloadProcessor implements PayloadProcessor {
             try {
                 processor.processResponse(payload);
             } catch (Throwable t) {
-                // ignore it
+                logger.error("PayloadProcessor {} failed processing response payload due to {}", processor.getName(), t.getMessage());
             }
         }
     }

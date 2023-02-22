@@ -23,6 +23,8 @@ public final class ModelMeshEnvVars {
 
     private ModelMeshEnvVars() {}
 
+    public static final String MM_PAYLOAD_PROCESSORS = "MM_PAYLOAD_PROCESSORS";
+
     // This must not be changed after model-mesh is already deployed to a particular env
     public static final String KV_STORE_PREFIX = "MM_KVSTORE_PREFIX";
 

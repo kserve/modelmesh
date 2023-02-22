@@ -61,4 +61,15 @@ public class Payload {
     public ByteBuf getData() {
         return data;
     }
+
+    @Override
+    public String toString() {
+        return "Payload{" +
+                "modelId='" + modelId + '\'' +
+                ", vModelId='" + vModelId + '\'' +
+                ", method='" + method + '\'' +
+                ", metadata=" + metadata +
+                ", data=" + data +
+                '}';
+    }
 }

@@ -26,8 +26,8 @@ public class MatchingPayloadProcessor implements PayloadProcessor {
 
     public MatchingPayloadProcessor(PayloadProcessor delegate, String methodName, String modelId) {
         this.delegate = delegate;
-        this.methodName = methodName != null && methodName.equals("*") ? null : methodName;
-        this.modelId = modelId != null && modelId.equals("*") ? null : modelId;
+        this.methodName = "*".equals(methodName) || "".equals(methodName) ? null : methodName;
+        this.modelId = "*".equals(modelId) || "".equals(modelId) ? null : modelId;
     }
 
     @Override
@@ -38,12 +38,12 @@ public class MatchingPayloadProcessor implements PayloadProcessor {
     @Override
     public void processRequest(Payload payload) {
         boolean methodMatches = true;
-        if (this.methodName != null && this.methodName.length() > 0) {
+        if (this.methodName != null) {
             methodMatches = payload.getMethod() != null && this.methodName.equals(payload.getMethod());
         }
         if (methodMatches) {
             boolean modelIdMatches = true;
-            if (this.modelId != null && this.modelId.length() > 0) {
+            if (this.modelId != null) {
                 modelIdMatches = this.modelId.equals(payload.getModelId()) || this.modelId.equals(payload.getVModelId());
             }
             if (modelIdMatches) {
