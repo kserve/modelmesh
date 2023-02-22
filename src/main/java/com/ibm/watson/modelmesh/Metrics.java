@@ -232,17 +232,13 @@ interface Metrics extends AutoCloseable {
 
             // Custom info metrics
             if (!customParams.isEmpty()){
-                @SuppressWarnings("rawtypes")
-                SimpleCollector.Builder builder;
-                builder = Gauge.build();
-                Collector collector = (
-                    builder
-                    .name(params.get("metric_name"))
-                    .help("Custom Info Metrics")
-                    .labelNames(params.get("deployment"), params.get("slot"), params.get("component"), params.get("group"))
-                    .create()
-                );
-                registry.register(collector);
+                Gauge customMetrics = Gauge.build()
+                        .name(customParams.get("metric_name"))
+                        .help("Info Metrics")
+                        .labelNames("deployment", "slot", "component", "group")
+                        .create();
+                customMetrics.labels(customParams.get("deployment"), customParams.get("slot"), customParams.get("component"), customParams.get("group"));
+                registry.register(customMetrics);
             }
 
             this.metricServer = new NettyServer(registry, port, https);

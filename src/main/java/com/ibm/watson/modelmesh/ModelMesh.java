@@ -932,9 +932,10 @@ public abstract class ModelMesh extends ThriftService
             }
             String name = customMetricMatcher.group(1);
             String customParamString = customMetricMatcher.group(2);
+
             customParams = new HashMap<>();
             customParams.put("metric_name", name);
-            for (String customParm : customParamString.substring(1).split(",")) {
+            for (String customParm : customParamString.substring(0).split(",")) {
                 String[] kv = customParm.split("=");
                 customParams.put(kv[0], kv[1]);
             }

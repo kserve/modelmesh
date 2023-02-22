@@ -70,7 +70,9 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
 
     @Override
     protected Map<String, String> extraEnvVars() {
-        return  ImmutableMap.of("MM_METRICS", "prometheus:port=" + METRICS_PORT + ";scheme=" + SCHEME);
+        return  ImmutableMap.of(
+                "MM_METRICS", "prometheus:port=" + METRICS_PORT + ";scheme=" + SCHEME,
+                "MM_INFO_METRICS", "assistant_deployment_info:relabel;deployment=DEPLOYMENT_NAME,slot=SLOT_NAME,component=COMPONENT_NAME,group=GROUP_NAME");
     }
 
     @Test
@@ -84,7 +86,7 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
 
             // verify not found status
             ModelStatusInfo status = manageModels.getModelStatus(GetStatusRequest.newBuilder()
-                    .setModelId("i don't exist").build());
+                    .setModelId("I don't exist").build());
 
             assertEquals(ModelStatus.NOT_FOUND, status.getStatus());
             assertEquals(0, status.getErrorsCount());
@@ -198,5 +200,9 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
         assertEquals(0.0, metrics.get("jvm_buffer_pool_used_buffers{pool=\"mapped\",}")); // mmapped memory not used
         assertTrue(metrics.containsKey("jvm_gc_collection_seconds_sum{gc=\"G1 Young Generation\",}"));
         assertTrue(metrics.containsKey("jvm_memory_bytes_committed{area=\"heap\",}"));
+
+        // Info metrics
+        assertTrue(metrics.containsKey("assistant_deployment_info:relabel{deployment=\"DEPLOYMENT_NAME\",slot=\"SLOT_NAME\",component=\"COMPONENT_NAME\",group=\"GROUP_NAME\",}"));
+        assertEquals(0.0, metrics.get("assistant_deployment_info:relabel{deployment=\"DEPLOYMENT_NAME\",slot=\"SLOT_NAME\",component=\"COMPONENT_NAME\",group=\"GROUP_NAME\",}"));
     }
 }
