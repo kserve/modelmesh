@@ -730,7 +730,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                                 payloadProcessor.processRequest(new Payload(modelId, String.valueOf(isVModel),
                                                                                      methodName, headers, reqMessage));
                             } catch (Throwable t) {
-                                // ignore it
+                                logger.warn("Error while processing request payload {}", t.getMessage());
                             }
                         }
 
@@ -741,7 +741,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                             payloadProcessor.processResponse(new Payload(modelId, String.valueOf(isVModel), methodName,
                                                                          response.metadata, response.data));
                         } catch (Throwable t) {
-                            // ignore it
+                            logger.warn("Error while processing response payload {}", t.getMessage());
                         }
                         response = null;
                     } finally {
