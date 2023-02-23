@@ -20,6 +20,12 @@ import java.util.function.Function;
 
 import io.netty.buffer.ByteBuf;
 
+/**
+ * {@link PayloadProcessor} abstract implementation for {@link PayloadProcessor}s that need to access {@link ByteBuf}s
+ * contained in {@link Payload}s.
+ * This class takes care of retaining and releasing such {@link ByteBuf}s during payload processing.
+ * Extensions of this class should not modify {@link ByteBuf}s contained in {@link Payload}s.
+ */
 public abstract class PayloadDataProcessor implements PayloadProcessor{
 
     @Override
