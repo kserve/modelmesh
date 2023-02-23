@@ -63,7 +63,6 @@ import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap.EvictionListenerWithTime;
 import com.ibm.watson.modelmesh.payload.AsyncPayloadProcessor;
 import com.ibm.watson.modelmesh.payload.CompositePayloadProcessor;
-import com.ibm.watson.modelmesh.payload.FileWriterPayloadProcessor;
 import com.ibm.watson.modelmesh.payload.LoggingPayloadProcessor;
 import com.ibm.watson.modelmesh.payload.MatchingPayloadProcessor;
 import com.ibm.watson.modelmesh.payload.PayloadProcessor;
@@ -433,8 +432,6 @@ public abstract class ModelMesh extends ThriftService
     static {
         PayloadProcessor logger = new LoggingPayloadProcessor();
         registeredProcessors.put(logger.getName(), logger);
-        PayloadProcessor fileWriter = new FileWriterPayloadProcessor();
-        registeredProcessors.put(fileWriter.getName(), fileWriter);
     }
 
     private PayloadProcessor initPayloadProcessor() {
