@@ -33,8 +33,8 @@ class CompositePayloadProcessorTest {
 
         CompositePayloadProcessor payloadProcessor = new CompositePayloadProcessor(delegates);
         for (int i = 0; i < 10; i++) {
-            payloadProcessor.processRequest(new Payload(null, null, null, null, null));
-            payloadProcessor.processResponse(new Payload(null, null, null, null, null));
+            payloadProcessor.processRequest(new Payload(null, null, null, null, null, null));
+            payloadProcessor.processResponse(new Payload(null, null, null, null, null, null));
         }
         for (PayloadProcessor p : delegates) {
             DummyPayloadProcessor dummyPayloadProcessor = (DummyPayloadProcessor) p;

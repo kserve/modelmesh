@@ -30,13 +30,13 @@ class MatchingPayloadProcessorTest {
         AtomicInteger responseCount = new AtomicInteger();
         PayloadProcessor delegate = new DummyPayloadProcessor(requestCount, responseCount);
         MatchingPayloadProcessor payloadProcessor = new MatchingPayloadProcessor(delegate, null, null);
-        payloadProcessor.processRequest(new Payload(null, null, null, null, null));
+        payloadProcessor.processRequest(new Payload(null, null, null, null, null, null));
         assertEquals(1, requestCount.get());
-        payloadProcessor.processRequest(new Payload("someModelId", null, null, null, null));
+        payloadProcessor.processRequest(new Payload(null, "someModelId", null, null, null, null));
         assertEquals(2, requestCount.get());
-        payloadProcessor.processRequest(new Payload(null, null, "processRequest", null, null));
+        payloadProcessor.processRequest(new Payload(null, null, null, "processRequest", null, null));
         assertEquals(3, requestCount.get());
-        payloadProcessor.processRequest(new Payload("someModelId", null, "processRequest", null, null));
+        payloadProcessor.processRequest(new Payload(null, "someModelId", null, "processRequest", null, null));
         assertEquals(4, requestCount.get());
     }
 
@@ -46,13 +46,13 @@ class MatchingPayloadProcessorTest {
         AtomicInteger responseCount = new AtomicInteger();
         PayloadProcessor delegate = new DummyPayloadProcessor(requestCount, responseCount);
         MatchingPayloadProcessor payloadProcessor = new MatchingPayloadProcessor(delegate, null, "someModelId");
-        payloadProcessor.processRequest(new Payload(null, null, null, null, null));
+        payloadProcessor.processRequest(new Payload(null, null, null, null, null, null));
         assertEquals(0, requestCount.get());
-        payloadProcessor.processRequest(new Payload("someModelId", null, null, null, null));
+        payloadProcessor.processRequest(new Payload(null, "someModelId", null, null, null, null));
         assertEquals(1, requestCount.get());
-        payloadProcessor.processRequest(new Payload(null, null, "processRequest", null, null));
+        payloadProcessor.processRequest(new Payload(null, null, null, "processRequest", null, null));
         assertEquals(1, requestCount.get());
-        payloadProcessor.processRequest(new Payload("someModelId", null, "processRequest", null, null));
+        payloadProcessor.processRequest(new Payload(null, "someModelId", null, "processRequest", null, null));
         assertEquals(2, requestCount.get());
     }
 
@@ -62,13 +62,13 @@ class MatchingPayloadProcessorTest {
         AtomicInteger responseCount = new AtomicInteger();
         PayloadProcessor delegate = new DummyPayloadProcessor(requestCount, responseCount);
         MatchingPayloadProcessor payloadProcessor = new MatchingPayloadProcessor(delegate, "getName", null);
-        payloadProcessor.processRequest(new Payload(null, null, null, null, null));
+        payloadProcessor.processRequest(new Payload(null, null, null, null, null, null));
         assertEquals(0, requestCount.get());
-        payloadProcessor.processRequest(new Payload("someModelId", null, null, null, null));
+        payloadProcessor.processRequest(new Payload(null, "someModelId", null, null, null, null));
         assertEquals(0, requestCount.get());
-        payloadProcessor.processRequest(new Payload(null, null, "getName", null, null));
+        payloadProcessor.processRequest(new Payload(null, null, null, "getName", null, null));
         assertEquals(1, requestCount.get());
-        payloadProcessor.processRequest(new Payload("someModelId", null, "getName", null, null));
+        payloadProcessor.processRequest(new Payload(null, "someModelId", null, "getName", null, null));
         assertEquals(2, requestCount.get());
     }
 }

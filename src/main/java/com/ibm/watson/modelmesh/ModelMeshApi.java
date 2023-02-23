@@ -103,6 +103,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
@@ -701,6 +702,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     }
                     ModelResponse response = null;
                     String modelId = null;
+                    UUID payloadId = UUID.randomUUID();
                     try {
                         try {
                             String balancedMetaVal = headers.get(BALANCED_META_KEY);
@@ -727,7 +729,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         } finally {
                             releaseReqMessage();
                             try {
-                                payloadProcessor.processRequest(new Payload(modelId, String.valueOf(isVModel),
+                                payloadProcessor.processRequest(new Payload(payloadId, modelId, String.valueOf(isVModel),
                                                                                      methodName, headers, reqMessage));
                             } catch (Throwable t) {
                                 logger.warn("Error while processing request payload {}", t.getMessage());
@@ -738,7 +740,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         call.sendHeaders(response.metadata);
                         call.sendMessage(response.data);
                         try {
-                            payloadProcessor.processResponse(new Payload(modelId, String.valueOf(isVModel), methodName,
+                            payloadProcessor.processResponse(new Payload(payloadId, modelId, String.valueOf(isVModel), methodName,
                                                                          response.metadata, response.data));
                         } catch (Throwable t) {
                             logger.warn("Error while processing response payload {}", t.getMessage());

@@ -18,12 +18,14 @@ package com.ibm.watson.modelmesh.payload;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.UUID;
 
 import io.grpc.Metadata;
 import io.netty.buffer.ByteBuf;
 
 public class Payload {
 
+    private final UUID uuid;
     private final String modelId;
 
     private final String vModelId;
@@ -34,12 +36,17 @@ public class Payload {
 
     private final ByteBuf data;
 
-    public Payload(String modelId, String vModelId, String method, Metadata metadata, ByteBuf data) {
+    public Payload(UUID uuid, String modelId, String vModelId, String method, Metadata metadata, ByteBuf data) {
+        this.uuid = uuid;
         this.modelId = modelId;
         this.vModelId = vModelId;
         this.method = method;
         this.metadata = metadata;
         this.data = data;
+    }
+
+    public UUID getUUID() {
+        return uuid;
     }
 
     public String getModelId() {
@@ -65,7 +72,8 @@ public class Payload {
     @Override
     public String toString() {
         return "Payload{" +
-                "modelId='" + modelId + '\'' +
+                "uuid='" + uuid + '\'' +
+                ", modelId='" + modelId + '\'' +
                 ", vModelId='" + vModelId + '\'' +
                 ", method='" + method + '\'' +
                 ", metadata=" + metadata +
