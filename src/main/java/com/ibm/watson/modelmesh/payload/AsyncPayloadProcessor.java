@@ -80,7 +80,9 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
 
     /**
      * A {@link ConcurrentLinkedDeque} with fixed maximum capacity.
-     * When newer elements are offered while being at full capacity, the oldest elements are removed
+     * When newer elements are offered while being at full capacity, the oldest elements are removed.
+     * A counter of items that were dropped from the queue because of exceeding capacity is kept.
+     * 
      * @param <T>
      */
     static class FixedSizeConcurrentLinkedDeque<T> extends ConcurrentLinkedDeque<T> {
