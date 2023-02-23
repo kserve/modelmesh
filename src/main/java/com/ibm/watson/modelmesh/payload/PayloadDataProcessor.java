@@ -37,13 +37,23 @@ public abstract class PayloadDataProcessor implements PayloadProcessor{
     private void processPayload(Payload payload, Function<Payload, Boolean> function) {
         ByteBuf data = payload.getData();
         try {
-            data.retain();
+            if (data != null) {
+                data.retain();
+            }
             function.apply(payload);
         } finally {
-            data.release();
+            if (data != null) {
+                data.release();
+            }
         }
     }
 
+    /**
+     * Process the request payload (read-only access).
+     * The payload data should not be altered in any way.
+     *
+     * @param payload the payload
+     */
     protected abstract void processRequestPayload(Payload payload);
 
     @Override
@@ -58,5 +68,11 @@ public abstract class PayloadDataProcessor implements PayloadProcessor{
         });
     }
 
+    /**
+     * Process the response payload (read-only access).
+     * The payload data should not be altered in any way.
+     *
+     * @param payload the payload
+     */
     protected abstract void processResponsePayload(Payload payload);
 }
