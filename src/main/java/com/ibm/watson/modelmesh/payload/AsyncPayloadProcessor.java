@@ -82,7 +82,7 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
      * A {@link ConcurrentLinkedDeque} with fixed maximum capacity.
      * When newer elements are offered while being at full capacity, the oldest elements are removed.
      * A counter of items that were dropped from the queue because of exceeding capacity is kept.
-     * 
+     *
      * @param <T>
      */
     static class FixedSizeConcurrentLinkedDeque<T> extends ConcurrentLinkedDeque<T> {
@@ -99,6 +99,10 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
         @Override
         public boolean offer(T o) {
             return super.offer(o) && (size() <= capacity || (super.pop() != null && dropped.incrementAndGet() < capacity));
+        }
+
+        public int getDropped() {
+            return dropped.get();
         }
     }
 }

@@ -63,5 +63,6 @@ class AsyncPayloadProcessorTest {
         }
         assertTrue(queue.containsAll(Arrays.asList("c d e f g".split(" "))));
         assertFalse(queue.containsAll(Arrays.asList("a b".split(" "))));
+        assertEquals(2, queue.getDropped());
     }
 }
