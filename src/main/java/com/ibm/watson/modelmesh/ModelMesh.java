@@ -63,9 +63,12 @@ import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap.EvictionListenerWithTime;
 import com.ibm.watson.modelmesh.payload.AsyncPayloadProcessor;
 import com.ibm.watson.modelmesh.payload.CompositePayloadProcessor;
+import com.ibm.watson.modelmesh.payload.FileWriterPayloadProcessor;
 import com.ibm.watson.modelmesh.payload.LoggingPayloadProcessor;
 import com.ibm.watson.modelmesh.payload.MatchingPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.Payload;
 import com.ibm.watson.modelmesh.payload.PayloadProcessor;
+import com.ibm.watson.modelmesh.payload.RemotePayloadProcessor;
 import com.ibm.watson.modelmesh.thrift.ApplierException;
 import com.ibm.watson.modelmesh.thrift.BaseModelMeshService;
 import com.ibm.watson.modelmesh.thrift.InternalException;
@@ -427,13 +430,6 @@ public abstract class ModelMesh extends ThriftService
         }
     }
 
-    private static final Map<String, PayloadProcessor> registeredProcessors = new HashMap<>();
-
-    static {
-        PayloadProcessor logger = new LoggingPayloadProcessor();
-        registeredProcessors.put(logger.getName(), logger);
-    }
-
     private PayloadProcessor initPayloadProcessor() {
         String payloadProcessorsDefinitions = System.getenv(MM_PAYLOAD_PROCESSORS);
         List<PayloadProcessor> payloadProcessors = new ArrayList<>();
@@ -442,7 +438,12 @@ public abstract class ModelMesh extends ThriftService
                 try {
                     URI uri = URI.create(processorDefinition);
                     String processorName = uri.getScheme();
-                    PayloadProcessor processor = registeredProcessors.get(processorName);
+                    PayloadProcessor processor = null;
+                    if ("http".equals(processorName)) {
+                        processor = new RemotePayloadProcessor(uri);
+                    } else if ("logger".equals(processorName)) {
+                        processor = new LoggingPayloadProcessor();
+                    }
                     if (processor != null) {
                         String modelId = uri.getAuthority();
                         String method = uri.getQuery();
