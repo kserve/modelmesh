@@ -16,7 +16,6 @@
 
 package com.ibm.watson.modelmesh.payload;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -29,7 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A {@link PayloadProcessor}
+ * A {@link PayloadProcessor} that sends payloads to a remote service via HTTP POST.
  */
 public class RemotePayloadProcessor extends PayloadDataProcessor {
 
@@ -65,13 +64,12 @@ public class RemotePayloadProcessor extends PayloadDataProcessor {
                     .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody))
                     .build();
 
-            HttpResponse<String> response = client.send(request,
-                                                        HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 logger.warn("Processing {} didn't succeed: {}", payload, response);
             }
-        } catch (IOException | InterruptedException e) {
-            throw new RuntimeException(e);
+        } catch (Throwable e) {
+            logger.error("An error occurred while sending payload {} to {}: {}", payload, uri, e.getMessage());
         }
     }
 

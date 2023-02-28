@@ -16,6 +16,8 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
@@ -29,7 +31,7 @@ class MatchingPayloadProcessorTest {
         AtomicInteger requestCount = new AtomicInteger();
         AtomicInteger responseCount = new AtomicInteger();
         PayloadProcessor delegate = new DummyPayloadProcessor(requestCount, responseCount);
-        MatchingPayloadProcessor payloadProcessor = new MatchingPayloadProcessor(delegate, null, null);
+        MatchingPayloadProcessor payloadProcessor = MatchingPayloadProcessor.from(null, null, delegate);
         payloadProcessor.processRequest(new Payload(null, null, null, null, null, null));
         assertEquals(1, requestCount.get());
         payloadProcessor.processRequest(new Payload(null, "someModelId", null, null, null, null));
@@ -41,11 +43,38 @@ class MatchingPayloadProcessorTest {
     }
 
     @Test
+    void testPayloadProcessingAnySpecialChars() {
+        AtomicInteger requestCount = new AtomicInteger();
+        AtomicInteger responseCount = new AtomicInteger();
+        DummyPayloadProcessor delegate = new DummyPayloadProcessor(requestCount, responseCount);
+        List<PayloadProcessor> processors = new ArrayList<>();
+        processors.add(MatchingPayloadProcessor.from("", "", delegate));
+        processors.add(MatchingPayloadProcessor.from("*", "", delegate));
+        processors.add(MatchingPayloadProcessor.from("/*", "", delegate));
+        processors.add(MatchingPayloadProcessor.from("/*", "", delegate));
+        processors.add(MatchingPayloadProcessor.from("/*", "*", delegate));
+        processors.add(MatchingPayloadProcessor.from("/", "*", delegate));
+        processors.add(MatchingPayloadProcessor.from("", "*", delegate));
+        processors.add(MatchingPayloadProcessor.from("", "*", delegate));
+        for (PayloadProcessor payloadProcessor : processors) {
+            payloadProcessor.processRequest(new Payload(null, null, null, null, null, null));
+            assertEquals(1, requestCount.get());
+            payloadProcessor.processRequest(new Payload(null, "someModelId", null, null, null, null));
+            assertEquals(2, requestCount.get());
+            payloadProcessor.processRequest(new Payload(null, null, null, "processRequest", null, null));
+            assertEquals(3, requestCount.get());
+            payloadProcessor.processRequest(new Payload(null, "someModelId", null, "processRequest", null, null));
+            assertEquals(4, requestCount.get());
+            delegate.reset();
+        }
+    }
+
+    @Test
     void testPayloadProcessingModelFilter() {
         AtomicInteger requestCount = new AtomicInteger();
         AtomicInteger responseCount = new AtomicInteger();
         PayloadProcessor delegate = new DummyPayloadProcessor(requestCount, responseCount);
-        MatchingPayloadProcessor payloadProcessor = new MatchingPayloadProcessor(delegate, null, "someModelId");
+        MatchingPayloadProcessor payloadProcessor = MatchingPayloadProcessor.from("someModelId", null, delegate);
         payloadProcessor.processRequest(new Payload(null, null, null, null, null, null));
         assertEquals(0, requestCount.get());
         payloadProcessor.processRequest(new Payload(null, "someModelId", null, null, null, null));
@@ -61,7 +90,7 @@ class MatchingPayloadProcessorTest {
         AtomicInteger requestCount = new AtomicInteger();
         AtomicInteger responseCount = new AtomicInteger();
         PayloadProcessor delegate = new DummyPayloadProcessor(requestCount, responseCount);
-        MatchingPayloadProcessor payloadProcessor = new MatchingPayloadProcessor(delegate, "getName", null);
+        MatchingPayloadProcessor payloadProcessor = MatchingPayloadProcessor.from(null, "getName", delegate);
         payloadProcessor.processRequest(new Payload(null, null, null, null, null, null));
         assertEquals(0, requestCount.get());
         payloadProcessor.processRequest(new Payload(null, "someModelId", null, null, null, null));

@@ -24,7 +24,11 @@ java.nio.HeapByteBuffer[pos=0 lim=65 cap=65]
 ```
 
 A `PayloadProcessor` can be configured by means of a whitespace separated `String` of URIs.
-In a URI like `logger://pytorch1234?predict`: 
+In a URI like `logger:///pytorch1234?predict`: 
 * the scheme represents the type of processor, e.g., `logger`
-* the authority represents the model id to observe, e.g., `pytorch1234` 
+* the path represents the model id to observe, e.g., the `/pytorch1234` path will correspond to model with id `pytorch1234`
 * the query represents the method to observe, e.g., `predict`
+
+Featured `PayloadProcessors`:
+* `logger` : logs requests/responses payloads  to `model-mesh` logs (_INFO_ level)
+* `http` : sends requests/responses payloads to a remote service (via _HTTP POST_)

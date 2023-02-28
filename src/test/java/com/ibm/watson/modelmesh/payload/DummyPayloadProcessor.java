@@ -53,4 +53,9 @@ class DummyPayloadProcessor implements PayloadProcessor {
     public AtomicInteger getResponseCount() {
         return responseCount;
     }
+
+    public void reset() {
+        this.requestCount.set(0);
+        this.responseCount.set(0);
+    }
 }

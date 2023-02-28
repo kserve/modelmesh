@@ -437,15 +437,15 @@ public abstract class ModelMesh extends ThriftService
                     URI uri = URI.create(processorDefinition);
                     String processorName = uri.getScheme();
                     PayloadProcessor processor = null;
+                    String modelId = uri.getPath();
+                    String method = uri.getQuery();
                     if ("http".equals(processorName)) {
                         processor = new RemotePayloadProcessor(uri);
                     } else if ("logger".equals(processorName)) {
                         processor = new LoggingPayloadProcessor();
                     }
                     if (processor != null) {
-                        String modelId = uri.getAuthority();
-                        String method = uri.getQuery();
-                        MatchingPayloadProcessor p = new MatchingPayloadProcessor(processor, method, modelId);
+                        MatchingPayloadProcessor p = MatchingPayloadProcessor.from(modelId, method, processor);
                         payloadProcessors.add(p);
                         logger.info("Added PayloadProcessor {}", p.getName());
                     }
