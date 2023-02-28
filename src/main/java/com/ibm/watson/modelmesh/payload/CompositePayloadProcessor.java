@@ -17,6 +17,7 @@
 package com.ibm.watson.modelmesh.payload;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +34,7 @@ public class CompositePayloadProcessor implements PayloadProcessor {
 
     @Override
     public String getName() {
-        return "composite";
+        return "composite:[" + delegates.stream().map(PayloadProcessor::getName).collect(Collectors.joining()) + "]";
     }
 
     @Override

@@ -65,7 +65,7 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
 
     @Override
     public String getName() {
-        return delegate.getName();
+        return delegate.getName() + "-async";
     }
 
     @Override

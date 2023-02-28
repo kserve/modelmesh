@@ -20,6 +20,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -45,10 +46,10 @@ public class RemotePayloadProcessor extends PayloadDataProcessor {
     @Override
     protected void processRequestPayload(Payload payload) {
         Map<String, Object> values = new HashMap<>() {{
-            put("modelid", payload.getModelId());
-            put("uuid", payload.getUUID());
-            put("data", payload.getData());
-            put("kind", "request");
+            put("modelid", Base64.getEncoder().encode(payload.getModelId().getBytes()));
+            put("uuid", Base64.getEncoder().encode(payload.getUUID().toString().getBytes()));
+            put("data", Base64.getEncoder().encode(payload.getData().nioBuffer()));
+            put("kind", Base64.getEncoder().encode("request".getBytes()));
         }};
 
         sendPayload(payload, values);
@@ -76,10 +77,10 @@ public class RemotePayloadProcessor extends PayloadDataProcessor {
     @Override
     protected void processResponsePayload(Payload payload) {
         Map<String, Object> values = new HashMap<>() {{
-            put("modelid", payload.getModelId());
-            put("uuid", payload.getUUID());
-            put("data", payload.getData());
-            put("kind", "response");
+            put("modelid", Base64.getEncoder().encode(payload.getModelId().getBytes()));
+            put("uuid", Base64.getEncoder().encode(payload.getUUID().toString().getBytes()));
+            put("data", Base64.getEncoder().encode(payload.getData().nioBuffer()));
+            put("kind", Base64.getEncoder().encode("response".getBytes()));
         }};
 
         sendPayload(payload, values);

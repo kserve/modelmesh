@@ -19,6 +19,8 @@ package com.ibm.watson.modelmesh.payload;
 import java.util.function.Function;
 
 import io.netty.buffer.ByteBuf;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@link PayloadProcessor} abstract implementation for {@link PayloadProcessor}s that need to access {@link ByteBuf}s
@@ -28,6 +30,8 @@ import io.netty.buffer.ByteBuf;
  */
 public abstract class PayloadDataProcessor implements PayloadProcessor{
 
+    private static final Logger logger = LoggerFactory.getLogger(PayloadDataProcessor.class);
+
     @Override
     public void processRequest(Payload payload) {
         processPayload(payload, p -> {
@@ -35,6 +39,7 @@ public abstract class PayloadDataProcessor implements PayloadProcessor{
                 processRequestPayload(p);
                 return true;
             } catch (Throwable t) {
+                logger.error("Error while processing response payload {}: {}", payload, t.getMessage());
                 return false;
             }
         });
@@ -69,6 +74,7 @@ public abstract class PayloadDataProcessor implements PayloadProcessor{
                 processResponsePayload(p);
                 return true;
             } catch (Throwable t) {
+                logger.error("Error while processing response payload {}: {}", payload, t.getMessage());
                 return false;
             }
         });
