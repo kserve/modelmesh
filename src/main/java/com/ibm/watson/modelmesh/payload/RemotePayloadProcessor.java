@@ -20,11 +20,13 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,14 +47,26 @@ public class RemotePayloadProcessor extends PayloadDataProcessor {
 
     @Override
     protected void processRequestPayload(Payload payload) {
-        Map<String, Object> values = new HashMap<>() {{
+        Map<String, Object> values = prepareContentBody(payload, "request");
+        sendPayload(payload, values);
+    }
+
+    private static Map<String, Object> prepareContentBody(Payload payload, String kind) {
+        return new HashMap<>() {{
             put("modelid", Base64.getEncoder().encode(payload.getModelId().getBytes()));
             put("uuid", Base64.getEncoder().encode(payload.getUUID().toString().getBytes()));
-            put("data", Base64.getEncoder().encode(payload.getData().nioBuffer()));
-            put("kind", Base64.getEncoder().encode("request".getBytes()));
+            ByteBuffer byteBuffer;
+                try {
+                    byteBuffer = payload.getData().nioBuffer();
+                } catch (UnsupportedOperationException uoe) {
+                    ByteBuf byteBuf = payload.getData();
+                    final byte[] bytes = new byte[byteBuf.readableBytes()];
+                    byteBuf.getBytes(byteBuf.readerIndex(), bytes);
+                    byteBuffer = ByteBuffer.wrap(bytes);
+                }
+            put("data", Base64.getEncoder().encode(byteBuffer));
+            put("kind", Base64.getEncoder().encode(kind.getBytes()));
         }};
-
-        sendPayload(payload, values);
     }
 
     private void sendPayload(Payload payload, Map<String, Object> values) {
@@ -76,12 +90,7 @@ public class RemotePayloadProcessor extends PayloadDataProcessor {
 
     @Override
     protected void processResponsePayload(Payload payload) {
-        Map<String, Object> values = new HashMap<>() {{
-            put("modelid", Base64.getEncoder().encode(payload.getModelId().getBytes()));
-            put("uuid", Base64.getEncoder().encode(payload.getUUID().toString().getBytes()));
-            put("data", Base64.getEncoder().encode(payload.getData().nioBuffer()));
-            put("kind", Base64.getEncoder().encode("response".getBytes()));
-        }};
+        Map<String, Object> values = prepareContentBody(payload, "response");
 
         sendPayload(payload, values);
     }
