@@ -53,8 +53,8 @@ public class RemotePayloadProcessor extends PayloadDataProcessor {
 
     private static Map<String, Object> prepareContentBody(Payload payload, String kind) {
         return new HashMap<>() {{
-            put("modelid", Base64.getEncoder().encode(payload.getModelId().getBytes()));
-            put("uuid", Base64.getEncoder().encode(payload.getUUID().toString().getBytes()));
+            put("modelid", payload.getModelId());
+            put("uuid", payload.getUUID().toString());
             if (payload.getData() != null) {
                 ByteBuffer byteBuffer;
                 try {
@@ -69,18 +69,17 @@ public class RemotePayloadProcessor extends PayloadDataProcessor {
             } else {
                 put("data", Base64.getEncoder().encode("".getBytes()));
             }
-            put("kind", Base64.getEncoder().encode(kind.getBytes()));
+            put("kind", kind);
         }};
     }
 
     private void sendPayload(Payload payload, Map<String, Object> values) {
         ObjectMapper objectMapper = new ObjectMapper();
         try {
-            byte[] requestBody = objectMapper
-                    .writeValueAsBytes(values);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(uri)
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody))
+                    .headers("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(values)))
                     .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
