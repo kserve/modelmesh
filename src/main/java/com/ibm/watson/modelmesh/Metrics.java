@@ -38,19 +38,16 @@ import org.apache.logging.log4j.Logger;
 
 import java.net.SocketAddress;
 import java.nio.channels.DatagramChannel;
-import java.util.Collections;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static com.ibm.watson.modelmesh.Metric.*;
 import static com.ibm.watson.modelmesh.ModelMesh.M;
+import static com.ibm.watson.modelmesh.ModelMeshEnvVars.MMESH_CUSTOM_ENV_VAR;
+import static com.ibm.watson.modelmesh.ModelMeshEnvVars.MMESH_METRICS_ENV_VAR;
 import static java.util.concurrent.TimeUnit.*;
 
 /**
@@ -150,12 +147,14 @@ interface Metrics extends AutoCloseable {
                 5000, 10000, 20000, 60000, 120000, 300000
         };
 
+        private static final int INFO_METRICS_MAX = 5;
+
         private final CollectorRegistry registry;
         private final NettyServer metricServer;
         private final boolean shortNames;
         private final EnumMap<Metric, Collector> metricsMap = new EnumMap<>(Metric.class);
 
-        public PrometheusMetrics(Map<String, String> params, Map<String, String> customParams) throws Exception {
+        public PrometheusMetrics(Map<String, String> params, Map<String, String> infoMetricParams) throws Exception {
             int port = 2112;
             boolean shortNames = true;
             boolean https = true;
@@ -230,15 +229,30 @@ interface Metrics extends AutoCloseable {
                 }
             }
 
-            // Custom info metrics
-            if (!customParams.isEmpty()){
-                Gauge customMetrics = Gauge.build()
-                        .name(customParams.get("metric_name"))
+            if (!infoMetricParams.isEmpty()){
+                if (infoMetricParams.size() > INFO_METRICS_MAX) {
+                    throw new Exception("Too many info metrics provided in env var " + MMESH_CUSTOM_ENV_VAR + ": \""
+                            + infoMetricParams+ "\"");
+                }
+
+                // Remove unset (unresolved) labels
+                for(String key : infoMetricParams.keySet()) {
+                    if(infoMetricParams.get(key).contains("$(")){
+                        infoMetricParams.remove(key);
+                        logger.info(("Info metric for label '" + key + "' is missing in env var: "
+                                + MMESH_CUSTOM_ENV_VAR));
+                    }
+                }
+
+                String[] labelNames = infoMetricParams.keySet().toArray(new String[0]);
+                String[] labelValues = infoMetricParams.values().toArray(new String[0]);
+                Gauge infoMetricsGauge = Gauge.build()
+                        .name(infoMetricParams.remove("metric_name"))
                         .help("Info Metrics")
-                        .labelNames("deployment", "slot", "component", "group")
+                        .labelNames(labelNames)
                         .create();
-                customMetrics.labels(customParams.get("deployment"), customParams.get("slot"), customParams.get("component"), customParams.get("group"));
-                registry.register(customMetrics);
+                infoMetricsGauge.labels(labelValues).set(1.0);
+                registry.register(infoMetricsGauge);
             }
 
             this.metricServer = new NettyServer(registry, port, https);

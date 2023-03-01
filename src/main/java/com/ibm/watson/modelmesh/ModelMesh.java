@@ -918,26 +918,25 @@ public abstract class ModelMesh extends ThriftService
                 params.put(kv[0], kv[1]);
             }
         }
-        String customMetricConfig = getStringParameter(MMESH_CUSTOM_ENV_VAR, null);
-        Map<String, String> customParams;
-        if (customMetricConfig == null) {
+        String infoMetricConfig = getStringParameter(MMESH_CUSTOM_ENV_VAR, null);
+        Map<String, String> infoMetricParams;
+        if (infoMetricConfig == null) {
             logger.info("{} returned null", MMESH_CUSTOM_ENV_VAR);
-            customParams = Collections.emptyMap();
+            infoMetricParams = Collections.emptyMap();
         } else {
-            logger.info("{} set to \"{}\"", MMESH_CUSTOM_ENV_VAR, customMetricConfig);
-            Matcher customMetricMatcher = CUSTOM_METRIC_CONFIG_PATT.matcher(customMetricConfig);
-            if (!customMetricMatcher.matches()) {
+            logger.info("{} set to \"{}\"", MMESH_CUSTOM_ENV_VAR, infoMetricConfig);
+            Matcher infoMetricMatcher = CUSTOM_METRIC_CONFIG_PATT.matcher(infoMetricConfig);
+            if (!infoMetricMatcher.matches()) {
                 throw new Exception("Invalid metrics configuration provided in env var " + MMESH_CUSTOM_ENV_VAR + ": \""
-                                    + customMetricConfig + "\"");
+                                    + infoMetricConfig + "\"");
             }
-            String name = customMetricMatcher.group(1);
-            String customParamString = customMetricMatcher.group(2);
-
-            customParams = new HashMap<>();
-            customParams.put("metric_name", name);
-            for (String customParm : customParamString.substring(0).split(",")) {
-                String[] kv = customParm.split("=");
-                customParams.put(kv[0], kv[1]);
+            String infoMetricName = infoMetricMatcher.group(1);
+            String infoMetricParamString = infoMetricMatcher.group(2);
+            infoMetricParams = new LinkedHashMap<>(); // To maintain the order when setting values in Gauge builder
+            infoMetricParams.put("metric_name", infoMetricName);
+            for (String infoMetricParam : infoMetricParamString.substring(0).split(",")) {
+                String[] kv = infoMetricParam.split("=");
+                infoMetricParams.put(kv[0], kv[1]);
             }
         }
         try {
@@ -945,7 +944,7 @@ public abstract class ModelMesh extends ThriftService
             case "statsd":
                 return new Metrics.StatsDMetrics(params);
             case "prometheus":
-                return new Metrics.PrometheusMetrics(params, customParams);
+                return new Metrics.PrometheusMetrics(params, infoMetricParams);
             case "disabled":
                 logger.info("Metrics publishing is disabled (env var {}={})", MMESH_METRICS_ENV_VAR, metricsConfig);
                 return Metrics.NO_OP_METRICS;
