@@ -727,13 +727,13 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                                         balancedMetaVal, headers, reqMessage, allRequired);
                             }
                         } finally {
-                            releaseReqMessage();
                             try {
                                 payloadProcessor.processRequest(new Payload(payloadId, modelId, String.valueOf(isVModel),
                                                                                      methodName, headers, reqMessage));
                             } catch (Throwable t) {
                                 logger.warn("Error while processing request payload {}", t.getMessage());
                             }
+                            releaseReqMessage();
                         }
 
                         respSize = response.data.readableBytes();

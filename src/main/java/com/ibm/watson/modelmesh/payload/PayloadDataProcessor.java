@@ -54,7 +54,11 @@ public abstract class PayloadDataProcessor implements PayloadProcessor{
             function.apply(payload);
         } finally {
             if (data != null) {
-                data.release();
+                try {
+                    data.release();
+                } catch (Throwable t) {
+                    logger.debug("Payload data already released");
+                }
             }
         }
     }
