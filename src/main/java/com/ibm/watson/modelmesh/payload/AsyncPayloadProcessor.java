@@ -48,6 +48,7 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
             Payload p;
             while ((p = requestPayloads.poll()) != null) {
                 delegate.processRequest(p);
+                maybeRelease(p);
             }
             int droppedRequest = requestPayloads.dropped.getAndSet(0);
             if (droppedRequest > 0) {
@@ -55,12 +56,19 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
             }
             while ((p = responsePayloads.poll()) != null) {
                 delegate.processResponse(p);
+                maybeRelease(p);
             }
             int droppedResponse = responsePayloads.dropped.getAndSet(0);
             if (droppedResponse > 0) {
                 logger.warn("{} response payloads were skipped because of {} capacity limit", droppedResponse, capacity);
             }
         }, 0, delay, timeUnit);
+    }
+
+    private static void maybeRelease(Payload p) {
+        if (p.getData() != null) {
+            p.getData().release();
+        }
     }
 
     @Override
@@ -71,11 +79,19 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
     @Override
     public void processRequest(Payload payload) {
         requestPayloads.offer(payload);
+        maybeRetain(payload);
+    }
+
+    private static void maybeRetain(Payload payload) {
+        if (payload.getData() != null) {
+            payload.getData().retain();
+        }
     }
 
     @Override
     public void processResponse(Payload payload) {
         responsePayloads.offer(payload);
+        maybeRetain(payload);
     }
 
     /**
