@@ -16,8 +16,6 @@
 
 package com.ibm.watson.modelmesh.payload;
 
-import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.UUID;
 
 import io.grpc.Metadata;
