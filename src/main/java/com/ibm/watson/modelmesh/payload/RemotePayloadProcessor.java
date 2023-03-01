@@ -55,7 +55,8 @@ public class RemotePayloadProcessor extends PayloadDataProcessor {
         return new HashMap<>() {{
             put("modelid", Base64.getEncoder().encode(payload.getModelId().getBytes()));
             put("uuid", Base64.getEncoder().encode(payload.getUUID().toString().getBytes()));
-            ByteBuffer byteBuffer;
+            if (payload.getData() != null) {
+                ByteBuffer byteBuffer;
                 try {
                     byteBuffer = payload.getData().nioBuffer();
                 } catch (UnsupportedOperationException uoe) {
@@ -64,7 +65,10 @@ public class RemotePayloadProcessor extends PayloadDataProcessor {
                     byteBuf.getBytes(byteBuf.readerIndex(), bytes);
                     byteBuffer = ByteBuffer.wrap(bytes);
                 }
-            put("data", Base64.getEncoder().encode(byteBuffer));
+                put("data", Base64.getEncoder().encode(byteBuffer));
+            } else {
+                put("data", Base64.getEncoder().encode("".getBytes()));
+            }
             put("kind", Base64.getEncoder().encode(kind.getBytes()));
         }};
     }
