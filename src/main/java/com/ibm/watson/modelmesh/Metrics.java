@@ -232,7 +232,7 @@ interface Metrics extends AutoCloseable {
             if (!infoMetricParams.isEmpty()){
                 if (infoMetricParams.size() > INFO_METRICS_MAX) {
                     throw new Exception("Too many info metrics provided in env var " + MMESH_CUSTOM_ENV_VAR + ": \""
-                            + infoMetricParams+ "\"");
+                            + infoMetricParams+ "\". The max is " + INFO_METRICS_MAX);
                 }
 
                 // Remove unset (unresolved) labels
@@ -244,10 +244,11 @@ interface Metrics extends AutoCloseable {
                     }
                 }
 
+                String metric_name = infoMetricParams.remove("metric_name");
                 String[] labelNames = infoMetricParams.keySet().toArray(new String[0]);
                 String[] labelValues = infoMetricParams.values().toArray(new String[0]);
                 Gauge infoMetricsGauge = Gauge.build()
-                        .name(infoMetricParams.remove("metric_name"))
+                        .name(metric_name)
                         .help("Info Metrics")
                         .labelNames(labelNames)
                         .create();
