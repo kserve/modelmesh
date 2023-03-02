@@ -115,7 +115,6 @@ public class SidecarModelMeshTest extends SingleInstanceModelMeshTest {
             // delete
             manageModels.unregisterModel(UnregisterModelRequest.newBuilder()
                     .setModelId(modelId).build());
-            Thread.sleep(100000);
         } finally {
             channel.shutdown();
         }
