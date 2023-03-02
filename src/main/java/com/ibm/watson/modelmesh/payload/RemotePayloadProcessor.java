@@ -94,7 +94,6 @@ public class RemotePayloadProcessor extends PayloadDataProcessor {
     @Override
     protected void processResponsePayload(Payload payload) {
         Map<String, Object> values = prepareContentBody(payload, "response");
-
         sendPayload(payload, values);
     }
 

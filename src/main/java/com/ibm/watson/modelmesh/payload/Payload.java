@@ -24,6 +24,7 @@ import io.netty.buffer.ByteBuf;
 public class Payload {
 
     private final UUID uuid;
+
     private final String modelId;
 
     private final String vModelId;
