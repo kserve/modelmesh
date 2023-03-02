@@ -704,12 +704,13 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     String modelId = null;
                     UUID payloadId = UUID.randomUUID();
                     try {
+                        int requestReadIndex = reqMessage.readerIndex();
+                        int requestWriteIndex = reqMessage.writerIndex();
                         try {
                             String balancedMetaVal = headers.get(BALANCED_META_KEY);
                             Iterator<String> midIt = modelIds.iterator();
                             // guaranteed at least one
                             modelId = validateModelId(midIt.next(), isVModel);
-                            // process request payload
 
                             if (!midIt.hasNext()) {
                                 // single model case (most common)
@@ -728,20 +729,25 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                             }
                         } finally {
                             try {
+                                reqMessage.readerIndex(requestReadIndex);
+                                reqMessage.writerIndex(requestWriteIndex);
                                 payloadProcessor.processRequest(new Payload(payloadId, modelId, String.valueOf(isVModel),
-                                                                                     methodName, headers, reqMessage.retainedDuplicate()));
+                                                                                     methodName, headers, reqMessage));
                             } catch (Throwable t) {
                                 logger.warn("Error while processing request payload {}", t.getMessage());
                             }
                             releaseReqMessage();
                         }
-
+                        int responseReadIndex = response.data.readerIndex();
+                        int responseWriteIndex = response.data.writerIndex();
                         respSize = response.data.readableBytes();
                         call.sendHeaders(response.metadata);
                         call.sendMessage(response.data);
                         try {
+                            response.data.readerIndex(responseReadIndex);
+                            response.data.writerIndex(responseWriteIndex);
                             payloadProcessor.processResponse(new Payload(payloadId, modelId, String.valueOf(isVModel), methodName,
-                                                                         response.metadata, response.data.retainedDuplicate()));
+                                                                         response.metadata, response.data));
                         } catch (Throwable t) {
                             logger.warn("Error while processing response payload {}", t.getMessage());
                         }
