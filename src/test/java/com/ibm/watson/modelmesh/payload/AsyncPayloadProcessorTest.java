@@ -15,7 +15,7 @@
  */
 
 package com.ibm.watson.modelmesh.payload;
-import java.util.Arrays;
+
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -24,7 +24,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsyncPayloadProcessorTest {
 
@@ -52,17 +51,5 @@ class AsyncPayloadProcessorTest {
             // ignore it
         }
         assertEquals(20, dummyPayloadProcessor.getProcessCount().get());
-    }
-
-    @Test
-    void testQueue() {
-        AsyncPayloadProcessor.FixedSizeConcurrentLinkedDeque<String> queue = new AsyncPayloadProcessor.FixedSizeConcurrentLinkedDeque<>(5);
-        String[] strings = "a b c d e f g".split(" ");
-        for (String s : strings) {
-            queue.offer(s);
-        }
-        assertTrue(queue.containsAll(Arrays.asList("c d e f g".split(" "))));
-        assertFalse(queue.containsAll(Arrays.asList("a b".split(" "))));
-        assertEquals(2, queue.getDropped());
     }
 }

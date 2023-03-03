@@ -18,8 +18,10 @@ package com.ibm.watson.modelmesh.payload;
 
 import java.util.UUID;
 
+import com.google.protobuf.MessageLite;
 import io.grpc.Metadata;
 import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.protobuf.ProtobufDecoder;
 
 public class Payload {
 
@@ -84,7 +86,7 @@ public class Payload {
                 ", method='" + method + '\'' +
                 ", kind=" + kind +
                 ", metadata=" + metadata +
-                ", data=" + data +
+                ", data=" + data != null ? data.readableBytes() + "B" : "" +
                 '}';
     }
 }
