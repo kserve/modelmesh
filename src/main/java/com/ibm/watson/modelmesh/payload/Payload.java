@@ -16,20 +16,17 @@
 
 package com.ibm.watson.modelmesh.payload;
 
-import java.util.UUID;
-
-import com.google.protobuf.MessageLite;
 import io.grpc.Metadata;
 import io.netty.buffer.ByteBuf;
-import io.netty.handler.codec.protobuf.ProtobufDecoder;
 
+/**
+ * A model-mesh payload.
+ */
 public class Payload {
 
     private final String id;
 
     private final String modelId;
-
-    private final String vModelId;
 
     private final String method;
 
@@ -39,10 +36,9 @@ public class Payload {
 
     private final String kind;
 
-    public Payload(String id, String modelId, String vModelId, String method, Metadata metadata, ByteBuf data, String kind) {
+    public Payload(String id, String modelId, String method, Metadata metadata, ByteBuf data, String kind) {
         this.id = id;
         this.modelId = modelId;
-        this.vModelId = vModelId;
         this.method = method;
         this.metadata = metadata;
         this.data = data;
@@ -55,10 +51,6 @@ public class Payload {
 
     public String getModelId() {
         return modelId;
-    }
-
-    public String getVModelId() {
-        return vModelId;
     }
 
     public String getMethod() {
@@ -82,7 +74,6 @@ public class Payload {
         return "Payload{" +
                 "id='" + id + '\'' +
                 ", modelId='" + modelId + '\'' +
-                ", vModelId='" + vModelId + '\'' +
                 ", method='" + method + '\'' +
                 ", kind=" + kind +
                 ", metadata=" + metadata +

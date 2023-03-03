@@ -20,7 +20,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -38,6 +37,7 @@ import org.slf4j.LoggerFactory;
 public class RemotePayloadProcessor implements PayloadProcessor {
 
     private final static Logger logger = LoggerFactory.getLogger(RemotePayloadProcessor.class);
+
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final URI uri;

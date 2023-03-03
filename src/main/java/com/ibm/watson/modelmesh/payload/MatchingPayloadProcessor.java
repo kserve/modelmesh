@@ -44,7 +44,7 @@ public class MatchingPayloadProcessor implements PayloadProcessor {
         if (methodMatches) {
             boolean modelIdMatches = true;
             if (this.modelId != null) {
-                modelIdMatches = this.modelId.equals(payload.getModelId()) || this.modelId.equals(payload.getVModelId());
+                modelIdMatches = this.modelId.equals(payload.getModelId());
             }
             if (modelIdMatches) {
                 delegate.process(payload);
