@@ -430,8 +430,8 @@ public abstract class ModelMesh extends ThriftService
 
     private PayloadProcessor initPayloadProcessor() {
         String payloadProcessorsDefinitions = System.getenv(MM_PAYLOAD_PROCESSORS);
-        List<PayloadProcessor> payloadProcessors = new ArrayList<>();
-        if (payloadProcessorsDefinitions != null) {
+        if (payloadProcessorsDefinitions != null && payloadProcessorsDefinitions.length() > 0) {
+            List<PayloadProcessor> payloadProcessors = new ArrayList<>();
             for (String processorDefinition : payloadProcessorsDefinitions.split(" ")) {
                 try {
                     URI uri = URI.create(processorDefinition);
@@ -453,8 +453,10 @@ public abstract class ModelMesh extends ThriftService
                     logger.error("Unable to parse PayloadProcessor URI definition {}", processorDefinition);
                 }
             }
+            return new AsyncPayloadProcessor(new CompositePayloadProcessor(payloadProcessors));
+        } else {
+            return null;
         }
-        return new AsyncPayloadProcessor(new CompositePayloadProcessor(payloadProcessors));
     }
 
     /* ---------------------------------- initialization --------------------------------------------------------- */

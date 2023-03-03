@@ -29,12 +29,7 @@ public class LoggingPayloadProcessor implements PayloadProcessor {
     }
 
     @Override
-    public void processRequest(Payload payload) {
-        LOG.info("Request payload: {}", payload);
-    }
-
-    @Override
-    public void processResponse(Payload payload) {
-        LOG.info("Response payload: {}", payload);
+    public void process(Payload payload) {
+        LOG.info("Payload: {}", payload);
     }
 }

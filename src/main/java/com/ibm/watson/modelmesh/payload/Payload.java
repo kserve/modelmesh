@@ -23,7 +23,7 @@ import io.netty.buffer.ByteBuf;
 
 public class Payload {
 
-    private final UUID uuid;
+    private final String id;
 
     private final String modelId;
 
@@ -35,17 +35,20 @@ public class Payload {
 
     private final ByteBuf data;
 
-    public Payload(UUID uuid, String modelId, String vModelId, String method, Metadata metadata, ByteBuf data) {
-        this.uuid = uuid;
+    private final String kind;
+
+    public Payload(String id, String modelId, String vModelId, String method, Metadata metadata, ByteBuf data, String kind) {
+        this.id = id;
         this.modelId = modelId;
         this.vModelId = vModelId;
         this.method = method;
         this.metadata = metadata;
         this.data = data;
+        this.kind = kind;
     }
 
-    public UUID getUUID() {
-        return uuid;
+    public String getId() {
+        return id;
     }
 
     public String getModelId() {
@@ -68,13 +71,18 @@ public class Payload {
         return data;
     }
 
+    public String getKind() {
+        return kind;
+    }
+
     @Override
     public String toString() {
         return "Payload{" +
-                "uuid='" + uuid + '\'' +
+                "id='" + id + '\'' +
                 ", modelId='" + modelId + '\'' +
                 ", vModelId='" + vModelId + '\'' +
                 ", method='" + method + '\'' +
+                ", kind=" + kind +
                 ", metadata=" + metadata +
                 ", data=" + data +
                 '}';

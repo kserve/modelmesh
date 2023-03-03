@@ -20,16 +20,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 class DummyPayloadProcessor implements PayloadProcessor {
 
-    private final AtomicInteger requestCount;
-    private final AtomicInteger responseCount;
+    private final AtomicInteger processCount;
 
     DummyPayloadProcessor() {
-        this(new AtomicInteger(0), new AtomicInteger(0));
+        this(new AtomicInteger(0));
     }
 
-    DummyPayloadProcessor(AtomicInteger requestCount, AtomicInteger responseCount) {
-        this.requestCount = requestCount;
-        this.responseCount = responseCount;
+    DummyPayloadProcessor(AtomicInteger processCount) {
+        this.processCount = processCount;
     }
 
     @Override
@@ -38,24 +36,15 @@ class DummyPayloadProcessor implements PayloadProcessor {
     }
 
     @Override
-    public void processRequest(Payload payload) {
-        this.requestCount.incrementAndGet();
+    public void process(Payload payload) {
+        this.processCount.incrementAndGet();
     }
 
-    public void processResponse(Payload payload) {
-        this.responseCount.incrementAndGet();
-    }
-
-    public AtomicInteger getRequestCount() {
-        return requestCount;
-    }
-
-    public AtomicInteger getResponseCount() {
-        return responseCount;
+    public AtomicInteger getProcessCount() {
+        return processCount;
     }
 
     public void reset() {
-        this.requestCount.set(0);
-        this.responseCount.set(0);
+        this.processCount.set(0);
     }
 }

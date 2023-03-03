@@ -31,8 +31,7 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
 
     private final PayloadProcessor delegate;
 
-    private final FixedSizeConcurrentLinkedDeque<Payload> requestPayloads;
-    private final FixedSizeConcurrentLinkedDeque<Payload> responsePayloads;
+    private final FixedSizeConcurrentLinkedDeque<Payload> payloads;
 
     public AsyncPayloadProcessor(PayloadProcessor delegate) {
         this(delegate, 1, TimeUnit.MINUTES, Executors.newScheduledThreadPool(1), 1000);
@@ -41,26 +40,17 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
     public AsyncPayloadProcessor(PayloadProcessor delegate, int delay, TimeUnit timeUnit,
                                  ScheduledExecutorService executorService, int capacity) {
         this.delegate = delegate;
-        this.requestPayloads = new FixedSizeConcurrentLinkedDeque<>(capacity);
-        this.responsePayloads = new FixedSizeConcurrentLinkedDeque<>(capacity);
+        this.payloads = new FixedSizeConcurrentLinkedDeque<>(capacity);
 
         executorService.scheduleWithFixedDelay(() -> {
             Payload p;
-            while ((p = requestPayloads.poll()) != null) {
-                delegate.processRequest(p);
+            while ((p = payloads.poll()) != null) {
+                delegate.process(p);
                 maybeRelease(p);
             }
-            int droppedRequest = requestPayloads.dropped.getAndSet(0);
+            int droppedRequest = payloads.dropped.getAndSet(0);
             if (droppedRequest > 0) {
                 logger.warn("{} request payloads were skipped because of {} capacity limit", droppedRequest, capacity);
-            }
-            while ((p = responsePayloads.poll()) != null) {
-                delegate.processResponse(p);
-                maybeRelease(p);
-            }
-            int droppedResponse = responsePayloads.dropped.getAndSet(0);
-            if (droppedResponse > 0) {
-                logger.warn("{} response payloads were skipped because of {} capacity limit", droppedResponse, capacity);
             }
         }, 0, delay, timeUnit);
     }
@@ -77,21 +67,16 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
     }
 
     @Override
-    public void processRequest(Payload payload) {
-        requestPayloads.offer(payload);
-        maybeRetain(payload);
+    public void process(Payload payload) {
+        if (payloads.offer(payload)) {
+            maybeRetain(payload);
+        }
     }
 
     private static void maybeRetain(Payload payload) {
         if (payload.getData() != null) {
             payload.getData().retain();
         }
-    }
-
-    @Override
-    public void processResponse(Payload payload) {
-        responsePayloads.offer(payload);
-        maybeRetain(payload);
     }
 
     /**
@@ -109,12 +94,14 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
 
         FixedSizeConcurrentLinkedDeque(int capacity) {
             this.capacity = capacity;
-            dropped = new AtomicInteger();
+            this.dropped = new AtomicInteger();
         }
 
         @Override
         public boolean offer(T o) {
-            return super.offer(o) && (size() <= capacity || (super.pop() != null && dropped.incrementAndGet() < capacity));
+            synchronized (this) {
+                return super.offer(o) && (size() <= capacity || (super.pop() != null && dropped.incrementAndGet() < capacity));
+            }
         }
 
         public int getDropped() {

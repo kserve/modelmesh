@@ -38,23 +38,12 @@ public class CompositePayloadProcessor implements PayloadProcessor {
     }
 
     @Override
-    public void processRequest(Payload payload) {
+    public void process(Payload payload) {
         for (PayloadProcessor processor : this.delegates) {
             try {
-                processor.processRequest(payload);
+                processor.process(payload);
             } catch (Throwable t) {
-                logger.error("PayloadProcessor {} failed processing request payload due to {}", processor.getName(), t.getMessage());
-            }
-        }
-    }
-
-    @Override
-    public void processResponse(Payload payload) {
-        for (PayloadProcessor processor : this.delegates) {
-            try {
-                processor.processResponse(payload);
-            } catch (Throwable t) {
-                logger.error("PayloadProcessor {} failed processing response payload due to {}", processor.getName(), t.getMessage());
+                logger.error("PayloadProcessor {} failed processing payload {} due to {}", processor.getName(), payload, t.getMessage());
             }
         }
     }

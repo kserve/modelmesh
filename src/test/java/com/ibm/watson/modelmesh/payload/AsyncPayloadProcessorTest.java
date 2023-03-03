@@ -36,7 +36,7 @@ class AsyncPayloadProcessorTest {
         AsyncPayloadProcessor payloadProcessor = new AsyncPayloadProcessor(dummyPayloadProcessor, 1, TimeUnit.NANOSECONDS, scheduler, 100);
 
         for (int i = 0; i < 10; i++) {
-            payloadProcessor.processRequest(new Payload(null, null, null, null, null, null));
+            payloadProcessor.process(new Payload(null, null, null, null, null, null, null));
         }
         try {
             assertFalse(scheduler.awaitTermination(1, TimeUnit.SECONDS));
@@ -44,14 +44,14 @@ class AsyncPayloadProcessorTest {
             // ignore it
         }
         for (int i = 0; i < 10; i++) {
-            payloadProcessor.processRequest(new Payload(null, null, null, null, null, null));
+            payloadProcessor.process(new Payload(null, null, null, null, null, null, null));
         }
         try {
             assertFalse(scheduler.awaitTermination(1, TimeUnit.SECONDS));
         } catch (InterruptedException e) {
             // ignore it
         }
-        assertEquals(20, dummyPayloadProcessor.getRequestCount().get());
+        assertEquals(20, dummyPayloadProcessor.getProcessCount().get());
     }
 
     @Test

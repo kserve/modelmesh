@@ -110,6 +110,7 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -702,10 +703,11 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     }
                     ModelResponse response = null;
                     String modelId = null;
-                    UUID payloadId = UUID.randomUUID();
+                    String payloadId = null;
+                    if (payloadProcessor != null) {
+                        payloadId = String.valueOf(ThreadLocalRandom.current().nextLong() + reqSize);
+                    }
                     try {
-                        int requestReadIndex = reqMessage.readerIndex();
-                        int requestWriteIndex = reqMessage.writerIndex();
                         try {
                             String balancedMetaVal = headers.get(BALANCED_META_KEY);
                             Iterator<String> midIt = modelIds.iterator();
@@ -728,29 +730,13 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                                         balancedMetaVal, headers, reqMessage, allRequired);
                             }
                         } finally {
-                            try {
-                                reqMessage.readerIndex(requestReadIndex);
-                                reqMessage.writerIndex(requestWriteIndex);
-                                payloadProcessor.processRequest(new Payload(payloadId, modelId, String.valueOf(isVModel),
-                                                                                     methodName, headers, reqMessage));
-                            } catch (Throwable t) {
-                                logger.warn("Error while processing request payload {}", t.getMessage());
-                            }
+                            processPayload(reqMessage, payloadId, modelId, methodName, headers, "request");
                             releaseReqMessage();
                         }
-                        int responseReadIndex = response.data.readerIndex();
-                        int responseWriteIndex = response.data.writerIndex();
                         respSize = response.data.readableBytes();
                         call.sendHeaders(response.metadata);
                         call.sendMessage(response.data);
-                        try {
-                            response.data.readerIndex(responseReadIndex);
-                            response.data.writerIndex(responseWriteIndex);
-                            payloadProcessor.processResponse(new Payload(payloadId, modelId, String.valueOf(isVModel), methodName,
-                                                                         response.metadata, response.data));
-                        } catch (Throwable t) {
-                            logger.warn("Error while processing response payload {}", t.getMessage());
-                        }
+                        processPayload(response.data, payloadId, modelId, methodName, response.metadata, "response");
                         response = null;
                     } finally {
                         if (response != null) {
@@ -782,6 +768,18 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     if (metrics.isEnabled()) {
                         metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
                                 status.getCode(), reqSize, respSize);
+                    }
+                }
+            }
+
+            private void processPayload(ByteBuf data, String payloadId, String modelId, String methodName, Metadata metadata, String kind) {
+                if (payloadProcessor != null) {
+                    try {
+                        data.readerIndex(0);
+                        payloadProcessor.process(new Payload(payloadId, modelId, String.valueOf(isVModel), methodName,
+                                                             metadata, data.retainedDuplicate(), kind));
+                    } catch (Throwable t) {
+                        logger.warn("Error while processing {}", t.getMessage());
                     }
                 }
             }
