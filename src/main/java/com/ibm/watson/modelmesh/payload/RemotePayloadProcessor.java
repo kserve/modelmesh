@@ -93,13 +93,13 @@ public class RemotePayloadProcessor implements PayloadProcessor {
 
     private static class PayloadContent {
         private final String id;
-        private final String modelId;
+        private final String modelid;
         private final String data;
         private final String kind;
 
-        private PayloadContent(String id, String modelId, String data, String kind) {
+        private PayloadContent(String id, String modelid, String data, String kind) {
             this.id = id;
-            this.modelId = modelId;
+            this.modelid = modelid;
             this.data = data;
             this.kind = kind;
         }
@@ -112,8 +112,8 @@ public class RemotePayloadProcessor implements PayloadProcessor {
             return kind;
         }
 
-        public String getModelId() {
-            return modelId;
+        public String getModelid() {
+            return modelid;
         }
 
         public String getData() {
