@@ -85,6 +85,7 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.FastThreadLocalThread;
 import org.apache.thrift.TException;
+import org.checkerframework.checker.units.qual.A;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -751,8 +752,13 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     call.close(status, emptyMeta());
                     Metrics metrics = delegate.metrics;
                     if (metrics.isEnabled()) {
-                        metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
-                                status.getCode(), reqSize, respSize);
+                        if (isVModel) {
+                            metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
+                                    status.getCode(), reqSize, respSize, "", Iterables.toString(modelIds));
+                        } else {
+                            metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
+                                    status.getCode(), reqSize, respSize, Iterables.toString(modelIds), "");
+                        }
                     }
                 }
             }

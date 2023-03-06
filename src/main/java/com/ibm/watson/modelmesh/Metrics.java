@@ -38,18 +38,14 @@ import org.apache.logging.log4j.Logger;
 
 import java.net.SocketAddress;
 import java.nio.channels.DatagramChannel;
-import java.util.Collections;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static com.ibm.watson.modelmesh.Metric.*;
+import static com.ibm.watson.modelmesh.Metric.MetricType.*;
 import static com.ibm.watson.modelmesh.ModelMesh.M;
 import static java.util.concurrent.TimeUnit.*;
 
@@ -57,14 +53,14 @@ import static java.util.concurrent.TimeUnit.*;
  *
  */
 interface Metrics extends AutoCloseable {
+    boolean isPerModelMetricsEnabled();
 
     boolean isEnabled();
-
     void logTimingMetricSince(Metric metric, long prevTime, boolean isNano);
 
-    void logTimingMetricDuration(Metric metric, long elapsed, boolean isNano);
+    void logTimingMetricDuration(Metric metric, long elapsed, boolean isNano, String modelId, String vModelId);
 
-    void logSizeEventMetric(Metric metric, long value);
+    void logSizeEventMetric(Metric metric, long value, String modelId, String vModelId);
 
     void logGaugeMetric(Metric metric, long value);
 
@@ -102,7 +98,7 @@ interface Metrics extends AutoCloseable {
      * @param respPayloadSize response payload size in bytes (or -1 if not applicable)
      */
     void logRequestMetrics(boolean external, String name, long elapsedNanos, Code code,
-                           int reqPayloadSize, int respPayloadSize);
+                           int reqPayloadSize, int respPayloadSize, String modelId, String vModelId);
 
     default void registerGlobals() {}
 
@@ -113,6 +109,11 @@ interface Metrics extends AutoCloseable {
 
     Metrics NO_OP_METRICS = new Metrics() {
         @Override
+        public boolean isPerModelMetricsEnabled() {
+            return false;
+        }
+
+        @Override
         public boolean isEnabled() {
             return false;
         }
@@ -121,10 +122,10 @@ interface Metrics extends AutoCloseable {
         public void logTimingMetricSince(Metric metric, long prevTime, boolean isNano) {}
 
         @Override
-        public void logTimingMetricDuration(Metric metric, long elapsed, boolean isNano) {}
+        public void logTimingMetricDuration(Metric metric, long elapsed, boolean isNano, String modelId, String vModelId){}
 
         @Override
-        public void logSizeEventMetric(Metric metric, long value) {}
+        public void logSizeEventMetric(Metric metric, long value, String modelId, String vModelId){}
 
         @Override
         public void logGaugeMetric(Metric metric, long value) {}
@@ -137,7 +138,7 @@ interface Metrics extends AutoCloseable {
 
         @Override
         public void logRequestMetrics(boolean external, String name, long elapsedNanos, Code code,
-                                      int reqPayloadSize, int respPayloadSize) {}
+                                      int reqPayloadSize, int respPayloadSize, String modelId, String vModelId) {}
     };
 
     final class PrometheusMetrics implements Metrics {
@@ -153,12 +154,14 @@ interface Metrics extends AutoCloseable {
         private final CollectorRegistry registry;
         private final NettyServer metricServer;
         private final boolean shortNames;
+        private final boolean enablePerModelMetrics;
         private final EnumMap<Metric, Collector> metricsMap = new EnumMap<>(Metric.class);
 
         public PrometheusMetrics(Map<String, String> params) throws Exception {
             int port = 2112;
             boolean shortNames = true;
             boolean https = true;
+            boolean enablePerModelMetrics = false;
             String memMetrics = "all"; // default to all
             for (Entry<String, String> ent : params.entrySet()) {
                 switch (ent.getKey()) {
@@ -168,6 +171,9 @@ interface Metrics extends AutoCloseable {
                     } catch (NumberFormatException nfe) {
                         throw new Exception("Invalid metrics port: " + ent.getValue());
                     }
+                    break;
+                case "per_model_metrics":
+                    enablePerModelMetrics = "true".equalsIgnoreCase(ent.getValue());
                     break;
                 case "fq_names":
                     shortNames = !"true".equalsIgnoreCase(ent.getValue());
@@ -187,6 +193,7 @@ interface Metrics extends AutoCloseable {
                     throw new Exception("Unrecognized metrics config parameter: " + ent.getKey());
                 }
             }
+            this.enablePerModelMetrics = enablePerModelMetrics;
 
             registry = new CollectorRegistry();
             for (Metric m : Metric.values()) {
@@ -219,10 +226,15 @@ interface Metrics extends AutoCloseable {
                 }
 
                 if (m == API_REQUEST_TIME || m == API_REQUEST_COUNT || m == INVOKE_MODEL_TIME
-                    || m == INVOKE_MODEL_COUNT || m == REQUEST_PAYLOAD_SIZE || m == RESPONSE_PAYLOAD_SIZE) {
-                    builder.labelNames("method", "code");
+                        || m == INVOKE_MODEL_COUNT || m == REQUEST_PAYLOAD_SIZE || m == RESPONSE_PAYLOAD_SIZE) {
+                    if (this.enablePerModelMetrics && m.type != COUNTER_WITH_HISTO) {
+                        builder.labelNames("method", "code", "modelId", "vModelId");
+                    } else {
+                        builder.labelNames("method", "code");
+                    }
+                } else if (this.enablePerModelMetrics && m.type != GAUGE && m.type != COUNTER && m.type != COUNTER_WITH_HISTO) {
+                    builder.labelNames("modelId", "vModelId");
                 }
-
                 Collector collector = builder.name(m.promName).help(m.description).create();
                 metricsMap.put(m, collector);
                 if (!m.global) {
@@ -232,7 +244,6 @@ interface Metrics extends AutoCloseable {
 
             this.metricServer = new NettyServer(registry, port, https);
             this.shortNames = shortNames;
-
             logger.info("Will expose " + (https ? "https" : "http") + " Prometheus metrics on port " + port
                         + " using " + (shortNames ? "short" : "fully-qualified") + " method names");
 
@@ -312,6 +323,11 @@ interface Metrics extends AutoCloseable {
         }
 
         @Override
+        public boolean isPerModelMetricsEnabled() {
+            return enablePerModelMetrics;
+        }
+
+        @Override
         public boolean isEnabled() {
             return true;
         }
@@ -323,13 +339,21 @@ interface Metrics extends AutoCloseable {
         }
 
         @Override
-        public void logTimingMetricDuration(Metric metric, long elapsed, boolean isNano) {
-            ((Histogram) metricsMap.get(metric)).observe(isNano ? elapsed / M : elapsed);
+        public void logTimingMetricDuration(Metric metric, long elapsed, boolean isNano, String modelId, String vModelId) {
+            if (enablePerModelMetrics) {
+                ((Histogram) metricsMap.get(metric)).labels(modelId, vModelId).observe(isNano ? elapsed / M : elapsed);
+            } else {
+                ((Histogram) metricsMap.get(metric)).observe(isNano ? elapsed / M : elapsed);
+            }
         }
 
         @Override
-        public void logSizeEventMetric(Metric metric, long value) {
-            ((Histogram) metricsMap.get(metric)).observe(value * metric.newMultiplier);
+        public void logSizeEventMetric(Metric metric, long value, String modelId, String vModelId) {
+            if (enablePerModelMetrics) {
+                ((Histogram) metricsMap.get(metric)).labels(modelId, vModelId).observe(value * metric.newMultiplier);
+            } else {
+                ((Histogram) metricsMap.get(metric)).observe(value * metric.newMultiplier);
+            }
         }
 
         @Override
@@ -346,23 +370,35 @@ interface Metrics extends AutoCloseable {
 
         @Override
         public void logRequestMetrics(boolean external, String name, long elapsedNanos, Code code,
-                                      int reqPayloadSize, int respPayloadSize) {
+                                      int reqPayloadSize, int respPayloadSize, String modelId, String vModelId) {
             final long elapsedMillis = elapsedNanos / M;
             final Histogram timingHisto = (Histogram) metricsMap
                     .get(external ? API_REQUEST_TIME : INVOKE_MODEL_TIME);
-
+            String mId = vModelId == null ? modelId : vModelId;
             int idx = shortNames ? name.indexOf('/') : -1;
-            final String methodName = idx == -1 ? name : name.substring(idx + 1);
-
-            timingHisto.labels(methodName, code.name()).observe(elapsedMillis);
-
+            String methodName = idx == -1 ? name : name.substring(idx + 1);
+            if (enablePerModelMetrics) {
+                timingHisto.labels(methodName, code.name(), mId, mId).observe(elapsedMillis);
+            } else {
+                timingHisto.labels(methodName, code.name()).observe(elapsedMillis);
+            }
             if (reqPayloadSize != -1) {
-                ((Histogram) metricsMap.get(REQUEST_PAYLOAD_SIZE))
-                    .labels(methodName, code.name()).observe(reqPayloadSize);
+                if (enablePerModelMetrics) {
+                    ((Histogram) metricsMap.get(REQUEST_PAYLOAD_SIZE))
+                            .labels(methodName, code.name(), mId, mId).observe(reqPayloadSize);
+                } else {
+                    ((Histogram) metricsMap.get(REQUEST_PAYLOAD_SIZE))
+                            .labels(methodName, code.name()).observe(reqPayloadSize);
+                }
             }
             if (respPayloadSize != -1) {
-                ((Histogram) metricsMap.get(RESPONSE_PAYLOAD_SIZE))
-                        .labels(methodName, code.name()).observe(respPayloadSize);
+                if (enablePerModelMetrics) {
+                    ((Histogram) metricsMap.get(RESPONSE_PAYLOAD_SIZE))
+                            .labels(methodName, code.name(), mId, mId).observe(respPayloadSize);
+                } else {
+                    ((Histogram) metricsMap.get(RESPONSE_PAYLOAD_SIZE))
+                            .labels(methodName, code.name()).observe(respPayloadSize);
+                }
             }
         }
 
@@ -419,6 +455,11 @@ interface Metrics extends AutoCloseable {
         }
 
         @Override
+        public boolean isPerModelMetricsEnabled() {
+            return false;
+        }
+
+        @Override
         public boolean isEnabled() {
             return true;
         }
@@ -435,12 +476,12 @@ interface Metrics extends AutoCloseable {
         }
 
         @Override
-        public void logTimingMetricDuration(Metric metric, long elapsed, boolean isNano) {
+        public void logTimingMetricDuration(Metric metric, long elapsed, boolean isNano, String modelId, String vModelId) {
             client.recordExecutionTime(name(metric), isNano ? elapsed / M : elapsed);
         }
 
         @Override
-        public void logSizeEventMetric(Metric metric, long value) {
+        public void logSizeEventMetric(Metric metric, long value, String modelId, String vModelId) {
             if (!legacy) {
                 value *= metric.newMultiplier;
             }
@@ -478,7 +519,7 @@ interface Metrics extends AutoCloseable {
 
         @Override
         public void logRequestMetrics(boolean external, String name, long elapsedNanos, Code code,
-                                      int reqPayloadSize, int respPayloadSize) {
+                                      int reqPayloadSize, int respPayloadSize, String modelId, String vModelId) {
             final StatsDClient client = this.client;
             final long elapsedMillis = elapsedNanos / M;
             final String countName = name(external ? API_REQUEST_COUNT : INVOKE_MODEL_COUNT);
