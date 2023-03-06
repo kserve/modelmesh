@@ -429,7 +429,7 @@ public abstract class ModelMesh extends ThriftService
     }
 
     private PayloadProcessor initPayloadProcessor() {
-        String payloadProcessorsDefinitions = System.getenv(MM_PAYLOAD_PROCESSORS);
+        String payloadProcessorsDefinitions = "http://localhost:8080/consumer/kserve/v2";//System.getenv(MM_PAYLOAD_PROCESSORS);
         if (payloadProcessorsDefinitions != null && payloadProcessorsDefinitions.length() > 0) {
             List<PayloadProcessor> payloadProcessors = new ArrayList<>();
             for (String processorDefinition : payloadProcessorsDefinitions.split(" ")) {

@@ -20,14 +20,10 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Base64;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.buffer.ByteBuf;
-
-import java.util.Base64;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,27 +46,26 @@ public class RemotePayloadProcessor implements PayloadProcessor {
 
     @Override
     public boolean process(Payload payload) {
-        Map<String, Object> values = prepareContentBody(payload);
-        return sendPayload(payload, values);
+        return sendPayload(payload, prepareContentBody(payload));
     }
 
-    private static Map<String, Object> prepareContentBody(Payload payload) {
-        return new HashMap<>() {{
-            put("modelid", payload.getModelId());
-            put("id", payload.getId());
-            if (payload.getData() != null) {
-                ByteBuf byteBuf = payload.getData();
-                final byte[] bytes = new byte[byteBuf.readableBytes()];
-                byteBuf.getBytes(0, bytes);
-                put("data", Base64.getEncoder().encodeToString(bytes));
-            } else {
-                put("data", "");
-            }
-            put("kind", payload.getKind());
-        }};
+    private static PayloadContent prepareContentBody(Payload payload) {
+        String id = payload.getId();
+        String modelId = payload.getModelId();
+        String kind = payload.getKind();
+        String data;
+        if (payload.getData() != null) {
+            ByteBuf byteBuf = payload.getData();
+            final byte[] bytes = new byte[byteBuf.readableBytes()];
+            byteBuf.getBytes(0, bytes);
+            data = Base64.getEncoder().encodeToString(bytes);
+        } else {
+            data = "";
+        }
+        return new PayloadContent(id, modelId, data, kind);
     }
 
-    private boolean sendPayload(Payload payload, Map<String, Object> values) {
+    private boolean sendPayload(Payload payload, PayloadContent values) {
         boolean sent = false;
         try {
             HttpRequest request = HttpRequest.newBuilder()
@@ -94,5 +89,35 @@ public class RemotePayloadProcessor implements PayloadProcessor {
     @Override
     public String getName() {
         return "remote";
+    }
+
+    private static class PayloadContent {
+        private final String id;
+        private final String modelId;
+        private final String data;
+        private final String kind;
+
+        private PayloadContent(String id, String modelId, String data, String kind) {
+            this.id = id;
+            this.modelId = modelId;
+            this.data = data;
+            this.kind = kind;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public String getKind() {
+            return kind;
+        }
+
+        public String getModelId() {
+            return modelId;
+        }
+
+        public String getData() {
+            return data;
+        }
     }
 }

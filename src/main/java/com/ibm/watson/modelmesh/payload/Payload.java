@@ -16,6 +16,10 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import javax.annotation.CheckForNull;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+
 import io.grpc.Metadata;
 import io.netty.buffer.ByteBuf;
 
@@ -36,7 +40,8 @@ public class Payload {
 
     private final String kind;
 
-    public Payload(String id, String modelId, String method, Metadata metadata, ByteBuf data, String kind) {
+    public Payload(@Nonnull String id, @Nonnull String modelId, @Nullable String method, @Nullable Metadata metadata,
+                   @Nullable ByteBuf data, @Nullable String kind) {
         this.id = id;
         this.modelId = modelId;
         this.method = method;
@@ -45,26 +50,32 @@ public class Payload {
         this.kind = kind;
     }
 
+    @Nonnull
     public String getId() {
         return id;
     }
 
+    @Nonnull
     public String getModelId() {
         return modelId;
     }
 
+    @CheckForNull
     public String getMethod() {
         return method;
     }
 
+    @CheckForNull
     public Metadata getMetadata() {
         return metadata;
     }
 
+    @CheckForNull
     public ByteBuf getData() {
         return data;
     }
 
+    @CheckForNull
     public String getKind() {
         return kind;
     }
@@ -77,7 +88,7 @@ public class Payload {
                 ", method='" + method + '\'' +
                 ", kind=" + kind +
                 ", metadata=" + metadata +
-                ", data=" + data != null ? data.readableBytes() + "B" : "" +
+                ", data=" + (data != null ? data.readableBytes() + "B" : "") +
                 '}';
     }
 }

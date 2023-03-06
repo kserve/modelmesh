@@ -113,6 +113,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -161,6 +162,8 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
     protected final LogRequestHeaders logHeaders;
 
     private final PayloadProcessor payloadProcessor;
+
+    private final ThreadLocal<AtomicInteger> localIdCounter = ThreadLocal.withInitial(AtomicInteger::new);
 
     /**
      * Create <b>and start</b> the server.
@@ -705,7 +708,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     String modelId = null;
                     String payloadId = null;
                     if (payloadProcessor != null) {
-                        payloadId = String.valueOf(ThreadLocalRandom.current().nextLong() + reqSize);
+                        payloadId = Thread.currentThread().getId() + "-" + localIdCounter.get().incrementAndGet();
                     }
                     try {
                         try {
@@ -777,9 +780,13 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                 if (payloadProcessor != null) {
                     Payload payload = new Payload(payloadId, modelId, methodName, metadata, data, kind);
                     try {
-                        data.readerIndex(0);
+                        if (data != null) {
+                            data.readerIndex(0);
+                        }
                         if (payloadProcessor.process(payload)) {
-                            data.retain();
+                            if (data != null) {
+                                data.retain();
+                            }
                         }
                     } catch (Throwable t) {
                         logger.warn("Error while processing {}: {}", payload, t.getMessage());
