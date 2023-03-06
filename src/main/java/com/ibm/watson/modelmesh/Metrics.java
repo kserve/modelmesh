@@ -36,6 +36,7 @@ import io.prometheus.client.CollectorRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.lang.reflect.Array;
 import java.net.SocketAddress;
 import java.nio.channels.DatagramChannel;
 import java.util.*;
@@ -154,7 +155,7 @@ interface Metrics extends AutoCloseable {
         private final boolean shortNames;
         private final EnumMap<Metric, Collector> metricsMap = new EnumMap<>(Metric.class);
 
-        public PrometheusMetrics(Map<String, String> params, Map<String, String> infoMetricParams) throws Exception {
+        public PrometheusMetrics(Map<String, String> params, LinkedHashMap<String, String> infoMetricParams) throws Exception {
             int port = 2112;
             boolean shortNames = true;
             boolean https = true;
@@ -229,19 +230,10 @@ interface Metrics extends AutoCloseable {
                 }
             }
 
-            if (!infoMetricParams.isEmpty()){
+            if (infoMetricParams != null && !infoMetricParams.isEmpty()){
                 if (infoMetricParams.size() > INFO_METRICS_MAX) {
                     throw new Exception("Too many info metrics provided in env var " + MMESH_CUSTOM_ENV_VAR + ": \""
                             + infoMetricParams+ "\". The max is " + INFO_METRICS_MAX);
-                }
-
-                // Remove unset (unresolved) labels
-                for(String key : infoMetricParams.keySet()) {
-                    if(infoMetricParams.get(key).contains("$(")){
-                        infoMetricParams.remove(key);
-                        logger.info(("Info metric for label '" + key + "' is missing in env var: "
-                                + MMESH_CUSTOM_ENV_VAR));
-                    }
                 }
 
                 String metric_name = infoMetricParams.remove("metric_name");

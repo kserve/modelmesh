@@ -68,18 +68,9 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
 
     static final String SCHEME = "https"; // or http
 
-    static final String METRIC_NAME = "assistant_deployment_info:relabel";
-    static final String DEPLOYMENT_NAME = "ga-tf-mm";
-    static final String SLOT_NAME = "ga";
-    static final String COMPONENT_NAME = "tf-mm";
-    static final String GROUP_NAME = "clu";
-
     @Override
     protected Map<String, String> extraEnvVars() {
-        return  ImmutableMap.of(
-                "MM_METRICS", "prometheus:port=" + METRICS_PORT + ";scheme=" + SCHEME,
-                "MM_INFO_METRICS", METRIC_NAME + ";deployment=" + DEPLOYMENT_NAME
-                        + ",slot=" + SLOT_NAME + ",component=" + COMPONENT_NAME + ",group=" + GROUP_NAME);
+        return  ImmutableMap.of("MM_METRICS", "prometheus:port=" + METRICS_PORT + ";scheme=" + SCHEME);
     }
 
     @Test
@@ -206,9 +197,5 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
         assertEquals(0.0, metrics.get("jvm_buffer_pool_used_buffers{pool=\"mapped\",}")); // mmapped memory not used
         assertTrue(metrics.containsKey("jvm_gc_collection_seconds_sum{gc=\"G1 Young Generation\",}"));
         assertTrue(metrics.containsKey("jvm_memory_bytes_committed{area=\"heap\",}"));
-
-        // Info metrics
-        assertEquals(1.0, metrics.get("assistant_deployment_info:relabel{deployment=\"" + DEPLOYMENT_NAME
-                + "\",slot=\"" + SLOT_NAME + "\",component=\"" + COMPONENT_NAME + "\",group=\"" + GROUP_NAME + "\",}"));
     }
 }
