@@ -775,12 +775,14 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
             private void processPayload(ByteBuf data, String payloadId, String modelId, String methodName,
                                         Metadata metadata, String kind) {
                 if (payloadProcessor != null) {
+                    Payload payload = new Payload(payloadId, modelId, methodName, metadata, data, kind);
                     try {
                         data.readerIndex(0);
-                        payloadProcessor.process(new Payload(payloadId, modelId, methodName,
-                                                             metadata, data.retainedDuplicate(), kind));
+                        if (payloadProcessor.process(payload)) {
+                            data.retain();
+                        }
                     } catch (Throwable t) {
-                        logger.warn("Error while processing {}", t.getMessage());
+                        logger.warn("Error while processing {}: {}", payload, t.getMessage());
                     }
                 }
             }

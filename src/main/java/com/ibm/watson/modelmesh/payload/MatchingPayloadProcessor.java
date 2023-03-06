@@ -36,7 +36,8 @@ public class MatchingPayloadProcessor implements PayloadProcessor {
     }
 
     @Override
-    public void process(Payload payload) {
+    public boolean process(Payload payload) {
+        boolean processed = false;
         boolean methodMatches = true;
         if (this.methodName != null) {
             methodMatches = payload.getMethod() != null && this.methodName.equals(payload.getMethod());
@@ -47,9 +48,10 @@ public class MatchingPayloadProcessor implements PayloadProcessor {
                 modelIdMatches = this.modelId.equals(payload.getModelId());
             }
             if (modelIdMatches) {
-                delegate.process(payload);
+                processed = delegate.process(payload);
             }
         }
+        return processed;
     }
 
     public static MatchingPayloadProcessor from(String modelId, String method, PayloadProcessor processor) {

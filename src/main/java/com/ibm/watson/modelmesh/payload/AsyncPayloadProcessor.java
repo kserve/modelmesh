@@ -49,11 +49,7 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
             Payload p;
             try {
                 while ((p = payloads.takeFirst()) != null) {
-                    try {
-                        delegate.process(p);
-                    } finally {
-                        maybeRelease(p);
-                    }
+                    delegate.process(p);
                 }
             } catch (InterruptedException ie) {
                 logger.warn("Payload queue processing interrupted: {}", ie.getMessage());
@@ -69,27 +65,14 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
         }, 0, delay, timeUnit);
     }
 
-    private static void maybeRelease(Payload p) {
-        if (p.getData() != null) {
-            p.getData().release();
-        }
-    }
-
     @Override
     public String getName() {
         return delegate.getName() + "-async";
     }
 
     @Override
-    public void process(Payload payload) {
-        if (payloads.offerFirst(payload)) {
-            maybeRetain(payload);
-        }
+    public boolean process(Payload payload) {
+        return payloads.offerFirst(payload);
     }
 
-    private static void maybeRetain(Payload payload) {
-        if (payload.getData() != null) {
-            payload.getData().retain();
-        }
-    }
 }

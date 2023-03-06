@@ -49,9 +49,9 @@ public class RemotePayloadProcessor implements PayloadProcessor {
     }
 
     @Override
-    public void process(Payload payload) {
+    public boolean process(Payload payload) {
         Map<String, Object> values = prepareContentBody(payload);
-        sendPayload(payload, values);
+        return sendPayload(payload, values);
     }
 
     private static Map<String, Object> prepareContentBody(Payload payload) {
@@ -70,7 +70,8 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         }};
     }
 
-    private void sendPayload(Payload payload, Map<String, Object> values) {
+    private boolean sendPayload(Payload payload, Map<String, Object> values) {
+        boolean sent = false;
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(uri)
@@ -81,10 +82,13 @@ public class RemotePayloadProcessor implements PayloadProcessor {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 logger.warn("Processing {} with request {} didn't succeed: {}", payload, values, response);
+            } else {
+                sent = true;
             }
         } catch (Throwable e) {
             logger.error("An error occurred while sending payload {} to {}: {}", payload, uri, e.getMessage());
         }
+        return sent;
     }
 
     @Override

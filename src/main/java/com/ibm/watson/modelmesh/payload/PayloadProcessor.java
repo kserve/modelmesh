@@ -20,6 +20,6 @@ public interface PayloadProcessor {
 
     String getName();
 
-    void process(Payload payload);
+    boolean process(Payload payload);
 
 }

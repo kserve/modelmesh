@@ -29,7 +29,8 @@ public class LoggingPayloadProcessor implements PayloadProcessor {
     }
 
     @Override
-    public void process(Payload payload) {
+    public boolean process(Payload payload) {
         LOG.info("Payload: {}", payload);
+        return true;
     }
 }
