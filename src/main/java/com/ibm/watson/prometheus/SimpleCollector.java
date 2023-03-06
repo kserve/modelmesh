@@ -161,7 +161,7 @@ public abstract class SimpleCollector<Child> extends Collector {
 
   private void validateCount(int count) {
     if (count != labelCount) {
-      throw new IllegalArgumentException("Incorrect number of labels.");
+      throw new IllegalArgumentException("Incorrect number of labels. Expected: " + labelCount + ", got: " + count);
     }
   }
 

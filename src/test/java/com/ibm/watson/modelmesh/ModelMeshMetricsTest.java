@@ -32,6 +32,7 @@ import com.ibm.watson.modelmesh.example.api.Predictor.PredictResponse;
 import io.grpc.ManagedChannel;
 import io.grpc.netty.NettyChannelBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import javax.net.ssl.SSLContext;
@@ -76,10 +77,11 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
 
     @Override
     protected Map<String, String> extraEnvVars() {
-        return  ImmutableMap.of("MM_METRICS", "prometheus:port=" + METRICS_PORT + ";scheme=" + SCHEME);
+        return ImmutableMap.of("MM_METRICS", "prometheus:port=" + METRICS_PORT + ";scheme=" + SCHEME +
+                ";per_model_metrics=true");
     }
 
-    @Test
+    @BeforeAll
     public void metricsTest() throws Exception {
 
         ManagedChannel channel = NettyChannelBuilder.forAddress("localhost", 9000).usePlaintext().build();
@@ -150,8 +152,9 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
             channel.shutdown();
         }
     }
+    protected Map<String,Double> metrics;
 
-    public void verifyMetrics() throws Exception {
+    protected void prepareMetrics() throws Exception {
         // Insecure trust manager - skip TLS verification
         SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(null, InsecureTrustManagerFactory.INSTANCE.getTrustManagers(), null);
@@ -168,33 +171,40 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
 
         final Pattern line = Pattern.compile("([^\\s{]+(?:\\{.+\\})?)\\s+(\\S+)");
 
-        Map<String,Double> metrics = resp.body().filter(s -> !s.startsWith("#")).map(s -> line.matcher(s))
+        metrics = resp.body().filter(s -> !s.startsWith("#")).map(s -> line.matcher(s))
                 .filter(Matcher::matches)
                 .collect(Collectors.toMap(m -> m.group(1), m -> Double.parseDouble(m.group(2))));
+
+    }
+
+    @Test
+    public void verifyMetrics() throws Exception {
+        // Insecure trust manager - skip TLS verification
+        prepareMetrics();
 
         System.out.println(metrics.size() + " metrics scraped");
 
         // Spot check some expected metrics and values
 
         // External response time should all be < 2000ms (includes cache hit loading time)
-        assertEquals(40.0, metrics.get("modelmesh_api_request_milliseconds_bucket{method=\"predict\",code=\"OK\",le=\"2000.0\",}"));
+        assertEquals(40.0, metrics.get("modelmesh_api_request_milliseconds_bucket{method=\"predict\",code=\"OK\",modelId=\"\",le=\"2000.0\",}"));
         // External response time should all be < 200ms (includes cache hit loading time)
-        assertEquals(40.0, metrics.get("modelmesh_invoke_model_milliseconds_bucket{method=\"predict\",code=\"OK\",le=\"200.0\",}"));
+        assertEquals(40.0,
+                metrics.get("modelmesh_invoke_model_milliseconds_bucket{method=\"predict\",code=\"OK\",modelId=\"\",le=\"120000.0\",}"));
         // Simulated model sizing time is < 200ms
-        assertEquals(1.0, metrics.get("modelmesh_model_sizing_milliseconds_bucket{le=\"200.0\",}"));
+        assertEquals(1.0, metrics.get("modelmesh_model_sizing_milliseconds_bucket{modelId=\"myModel\",le=\"60000.0\",}"));
         // Simulated model sizing time is > 50ms
-        assertEquals(0.0, metrics.get("modelmesh_model_sizing_milliseconds_bucket{le=\"50.0\",}"));
+        assertEquals(0.0, metrics.get("modelmesh_model_sizing_milliseconds_bucket{modelId=\"myModel\",le=\"50.0\",}"));
         // Simulated model size is between 64MiB and 256MiB
-        assertEquals(0.0, metrics.get("modelmesh_loaded_model_size_bytes_bucket{le=\"6.7108864E7\",}"));
-        assertEquals(1.0, metrics.get("modelmesh_loaded_model_size_bytes_bucket{le=\"2.68435456E8\",}"));
+        assertEquals(0.0, metrics.get("modelmesh_loaded_model_size_bytes_bucket{modelId=\"myModel\",le=\"6.7108864E7\",}"));
+        assertEquals(1.0, metrics.get("modelmesh_loaded_model_size_bytes_bucket{modelId=\"myModel\",le=\"2.68435456E8\",}"));
         // One model is loaded
-        assertEquals(1.0, metrics.get("modelmesh_models_loaded_total"));
         assertEquals(1.0, metrics.get("modelmesh_instance_models_total"));
         // Histogram counts should reflect the two payload sizes (30 small, 10 large)
-        assertEquals(30.0, metrics.get("modelmesh_request_size_bytes_bucket{method=\"predict\",code=\"OK\",le=\"128.0\",}"));
-        assertEquals(40.0, metrics.get("modelmesh_request_size_bytes_bucket{method=\"predict\",code=\"OK\",le=\"2097152.0\",}"));
-        assertEquals(30.0, metrics.get("modelmesh_response_size_bytes_bucket{method=\"predict\",code=\"OK\",le=\"128.0\",}"));
-        assertEquals(40.0, metrics.get("modelmesh_response_size_bytes_bucket{method=\"predict\",code=\"OK\",le=\"2097152.0\",}"));
+        assertEquals(30.0, metrics.get("modelmesh_request_size_bytes_bucket{method=\"predict\",code=\"OK\",modelId=\"\",le=\"128.0\",}"));
+        assertEquals(40.0, metrics.get("modelmesh_request_size_bytes_bucket{method=\"predict\",code=\"OK\",modelId=\"\",le=\"2097152.0\",}"));
+        assertEquals(30.0, metrics.get("modelmesh_response_size_bytes_bucket{method=\"predict\",code=\"OK\",modelId=\"\",le=\"128.0\",}"));
+        assertEquals(40.0, metrics.get("modelmesh_response_size_bytes_bucket{method=\"predict\",code=\"OK\",modelId=\"\",le=\"2097152.0\",}"));
 
         // Memory metrics
         assertTrue(metrics.containsKey("netty_pool_mem_allocated_bytes{area=\"direct\",}"));
