@@ -37,6 +37,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final URI uri;
+
     private final HttpClient client;
 
     public RemotePayloadProcessor(URI uri) {
@@ -81,7 +82,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
                 sent = true;
             }
         } catch (Throwable e) {
-            logger.error("An error occurred while sending payload {} to {}: {}", payload, uri, e.getMessage());
+            logger.error("An error occurred while sending payload {} to {}: {}", payload, uri, e.getCause());
         }
         return sent;
     }
