@@ -30,5 +30,5 @@ In a URI like `logger:///*?pytorch1234#predict`:
 * the fragment represents the method to observe, e.g., `predict`
 
 Featured `PayloadProcessors`:
-* `logger` : logs requests/responses payloads  to `model-mesh` logs (_INFO_ level)
-* `http` : sends requests/responses payloads to a remote service (via _HTTP POST_)
+* `logger` : logs requests/responses payloads  to `model-mesh` logs (_INFO_ level), e.g., use `logger://*` to log every `Payload`
+* `http` : sends requests/responses payloads to a remote service (via _HTTP POST_), e.g., use `http://10.10.10.1:8080/consumer/kserve/v2` to send every `Payload` to the specified HTTP endpoint
