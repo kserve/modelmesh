@@ -28,7 +28,17 @@ public class CompositePayloadProcessor implements PayloadProcessor {
 
     private final List<PayloadProcessor> delegates;
 
+    /**
+     * If any of the delegate processors take ownership of the payload
+     *
+     * @param delegates
+     */
     public CompositePayloadProcessor(List<PayloadProcessor> delegates) {
+        if (delegates.stream().anyMatch(PayloadProcessor::mayTakeOwnership)) {
+            throw new IllegalArgumentException(
+                "CompositePayloadProcessor can only be used with delegate processors that won't take ownership"
+            );
+        }
         this.delegates = delegates;
     }
 
@@ -39,14 +49,18 @@ public class CompositePayloadProcessor implements PayloadProcessor {
 
     @Override
     public boolean process(Payload payload) {
-        boolean processed = true;
-        for (PayloadProcessor processor : this.delegates) {
+        for (PayloadProcessor processor : delegates) {
+            boolean consumed = false;
             try {
-                processed &= processor.process(payload);
+                consumed = processor.process(payload);
             } catch (Throwable t) {
-                logger.error("PayloadProcessor {} failed processing payload {} due to {}", processor.getName(), payload, t.getMessage());
+                logger.error("PayloadProcessor {} failed processing payload {}", processor.getName(), payload, t);
+            }
+            if (consumed) {
+                throw new RuntimeException("PayloadProcessor " + processor.getName()
+                        + " unexpectedly took ownership of the payload");
             }
         }
-        return processed;
+        return false;
     }
 }

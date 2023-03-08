@@ -46,14 +46,19 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
         this.payloads = new LinkedBlockingDeque<>(capacity);
 
         executorService.execute(() -> {
-            Payload p;
             try {
-                while ((p = payloads.takeFirst()) != null) {
-                    delegate.process(p);
+                while (true) {
+                    processPayload(payloads.take());
                 }
             } catch (InterruptedException ie) {
-                logger.warn("Payload queue processing interrupted: {}", ie.getMessage());
+                // Here we assume that we're shutting down
+                logger.info("Payload queue processing interrupted");
             }
+            // Process any remaining payloads in the queue
+            for (Payload p; (p = payloads.poll()) != null;) {
+                processPayload(p);
+            }
+            logger.info("AsyncPayloadProcessor task exiting");
         });
 
         executorService.scheduleWithFixedDelay(() -> {
@@ -65,6 +70,24 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
         }, 0, delay, timeUnit);
     }
 
+    void processPayload(Payload p) {
+        boolean released = false;
+        try {
+            released = delegate.process(p);
+        } catch (Throwable t) {
+            logger.warn("Error while processing payload: {}", p, t);
+        } finally {
+            if (!released) {
+                p.release();
+            }
+        }
+    }
+
+    @Override
+    public boolean mayTakeOwnership() {
+        return true;
+    }
+
     @Override
     public String getName() {
         return delegate.getName() + "-async";
@@ -72,7 +95,11 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
 
     @Override
     public boolean process(Payload payload) {
-        return payloads.offerFirst(payload);
+        boolean enqueued = payloads.offer(payload);
+        if (!enqueued) {
+            dropped.incrementAndGet();
+        }
+        return enqueued;
     }
 
 }

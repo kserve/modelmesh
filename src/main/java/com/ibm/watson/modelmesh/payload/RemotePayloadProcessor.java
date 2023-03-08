@@ -20,10 +20,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.Base64;
+import java.nio.charset.StandardCharsets;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.base64.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,13 +54,13 @@ public class RemotePayloadProcessor implements PayloadProcessor {
     private static PayloadContent prepareContentBody(Payload payload) {
         String id = payload.getId();
         String modelId = payload.getModelId();
-        String kind = payload.getKind();
+        String kind = payload.getKind().toString();
+        ByteBuf byteBuf = payload.getData();
         String data;
-        if (payload.getData() != null) {
-            ByteBuf byteBuf = payload.getData();
-            final byte[] bytes = new byte[byteBuf.readableBytes()];
-            byteBuf.getBytes(0, bytes);
-            data = Base64.getEncoder().encodeToString(bytes);
+        if (byteBuf != null) {
+            ByteBuf encoded = Base64.encode(byteBuf, byteBuf.readerIndex(), byteBuf.readableBytes());
+            //TODO custom jackson serialization for this field to avoid round-tripping to string
+            data = encoded.toString(StandardCharsets.UTF_8);
         } else {
             data = "";
         }
