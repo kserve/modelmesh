@@ -708,14 +708,14 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
 
                 io.grpc.Status status = INTERNAL;
                 String modelId = null;
-                String payloadId = null;
+                String requestId = null;
                 ModelResponse response = null;
                 try (InterruptingListener cancelListener = newInterruptingListener()) {
                     if (logHeaders != null) {
                         logHeaders.addToMDC(headers); // MDC cleared in finally block
                     }
                     if (payloadProcessor != null) {
-                        payloadId = Thread.currentThread().getId() + "-" + ++localIdCounter.get()[0];
+                        requestId = Thread.currentThread().getId() + "-" + ++localIdCounter.get()[0];
                     }
                     try {
                         String balancedMetaVal = headers.get(BALANCED_META_KEY);
@@ -740,7 +740,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     } finally {
                         if (payloadProcessor != null) {
                             processPayload(reqMessage.readerIndex(reqReaderIndex),
-                                    payloadId, modelId, methodName, headers, null, true);
+                                    requestId, modelId, methodName, headers, null, true);
                         } else {
                             releaseReqMessage();
                         }
@@ -775,7 +775,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                             data = response.data.readerIndex(respReaderIndex);
                             metadata = response.metadata;
                         }
-                        processPayload(data, payloadId, modelId, methodName, metadata, status, false);
+                        processPayload(data, requestId, modelId, methodName, metadata, status, false);
                     }
                     ReleaseAfterResponse.releaseAll();
                     clearThreadLocals();
