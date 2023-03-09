@@ -20,6 +20,18 @@ public interface PayloadProcessor {
 
     String getName();
 
+    /**
+     * If this returns false then {@link #process(Payload)} should never return true
+     */
+    default boolean mayTakeOwnership() {
+        return false;
+    }
+
+    /**
+     * @param payload the indices of any contained byte buffers should not be changed
+     * @return true if the called method took ownership of the
+     *    payload, false otherwise.
+     */
     boolean process(Payload payload);
 
 }

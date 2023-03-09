@@ -103,17 +103,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.UUID;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -163,7 +160,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
 
     private final PayloadProcessor payloadProcessor;
 
-    private final ThreadLocal<AtomicInteger> localIdCounter = ThreadLocal.withInitial(AtomicInteger::new);
+    private final ThreadLocal<long[]> localIdCounter = ThreadLocal.withInitial(() -> new long[1]);
 
     /**
      * Create <b>and start</b> the server.
@@ -697,56 +694,57 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     call.close(INTERNAL.withDescription("Half-closed without a request"), emptyMeta());
                     return;
                 }
-                final int reqSize = reqMessage.readableBytes();
+                int reqReaderIndex = reqMessage.readerIndex();
+                int reqSize = reqMessage.readableBytes();
                 int respSize = -1;
+                int respReaderIndex = 0;
+
                 io.grpc.Status status = INTERNAL;
+                String modelId = null;
+                String payloadId = null;
+                ModelResponse response = null;
                 try (InterruptingListener cancelListener = newInterruptingListener()) {
                     if (logHeaders != null) {
                         logHeaders.addToMDC(headers); // MDC cleared in finally block
                     }
-                    ModelResponse response = null;
-                    String modelId = null;
-                    String payloadId = null;
                     if (payloadProcessor != null) {
-                        payloadId = Thread.currentThread().getId() + "-" + localIdCounter.get().incrementAndGet();
+                        payloadId = Thread.currentThread().getId() + "-" + ++localIdCounter.get()[0];
                     }
                     try {
-                        try {
-                            String balancedMetaVal = headers.get(BALANCED_META_KEY);
-                            Iterator<String> midIt = modelIds.iterator();
-                            // guaranteed at least one
-                            modelId = validateModelId(midIt.next(), isVModel);
-
-                            if (!midIt.hasNext()) {
-                                // single model case (most common)
-                                response = callModel(modelId, isVModel, methodName,
-                                        balancedMetaVal, headers, reqMessage).retain();
-                            } else {
-                                // multi-model case (specialized)
-                                boolean allRequired = "all".equalsIgnoreCase(headers.get(REQUIRED_KEY));
-                                List<String> idList = new ArrayList<>();
-                                idList.add(modelId);
-                                while (midIt.hasNext()) {
-                                    idList.add(validateModelId(midIt.next(), isVModel));
-                                }
-                                response = applyParallelMultiModel(idList, isVModel, methodName,
-                                        balancedMetaVal, headers, reqMessage, allRequired);
+                        String balancedMetaVal = headers.get(BALANCED_META_KEY);
+                        Iterator<String> midIt = modelIds.iterator();
+                        // guaranteed at least one
+                        modelId = validateModelId(midIt.next(), isVModel);
+                        if (!midIt.hasNext()) {
+                            // single model case (most common)
+                            response = callModel(modelId, isVModel, methodName,
+                                    balancedMetaVal, headers, reqMessage).retain();
+                        } else {
+                            // multi-model case (specialized)
+                            boolean allRequired = "all".equalsIgnoreCase(headers.get(REQUIRED_KEY));
+                            List<String> idList = new ArrayList<>();
+                            idList.add(modelId);
+                            while (midIt.hasNext()) {
+                                idList.add(validateModelId(midIt.next(), isVModel));
                             }
-                        } finally {
-                            processPayload(reqMessage, payloadId, modelId, methodName, headers, "request");
+                            response = applyParallelMultiModel(idList, isVModel, methodName,
+                                    balancedMetaVal, headers, reqMessage, allRequired);
+                        }
+                    } finally {
+                        if (payloadProcessor != null) {
+                            processPayload(reqMessage.readerIndex(reqReaderIndex),
+                                    payloadId, modelId, methodName, headers, null, true);
+                        } else {
                             releaseReqMessage();
                         }
-                        respSize = response.data.readableBytes();
-                        call.sendHeaders(response.metadata);
-                        call.sendMessage(response.data);
-                        processPayload(response.data, payloadId, modelId, methodName, response.metadata, "response");
-                        response = null;
-                    } finally {
-                        if (response != null) {
-                            response.release();
-                        }
+                        reqMessage = null; // ownership released or transferred
                     }
 
+                    respReaderIndex = response.data.readerIndex();
+                    respSize = response.data.readableBytes();
+                    call.sendHeaders(response.metadata);
+                    call.sendMessage(response.data);
+                    // response is released via ReleaseAfterResponse.releaseAll()
                     status = OK;
                 } catch (Exception e) {
                     status = toStatus(e);
@@ -763,6 +761,15 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         evictMethodDescriptor(methodName);
                     }
                 } finally {
+                    if (payloadProcessor != null) {
+                        ByteBuf data = null;
+                        Metadata metadata = null;
+                        if (response != null) {
+                            data = response.data.readerIndex(respReaderIndex);
+                            metadata = response.metadata;
+                        }
+                        processPayload(data, payloadId, modelId, methodName, metadata, status, false);
+                    }
                     ReleaseAfterResponse.releaseAll();
                     clearThreadLocals();
                     //TODO(maybe) additional trailer info in exception case?
@@ -775,22 +782,32 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                 }
             }
 
+            /**
+             *
+             * @param data
+             * @param payloadId
+             * @param modelId
+             * @param methodName
+             * @param metadata
+             * @param status null for requests, non-null for responses
+             * @param takeOwnership
+             */
             private void processPayload(ByteBuf data, String payloadId, String modelId, String methodName,
-                                        Metadata metadata, String kind) {
-                if (payloadProcessor != null) {
-                    Payload payload = new Payload(payloadId, modelId, methodName, metadata, data, kind);
-                    try {
-                        if (data != null) {
-                            data.readerIndex(0);
-                        }
-                        if (payloadProcessor.process(payload)) {
-                            if (data != null) {
-                                data.retain();
-                            }
-                        }
-                    } catch (Throwable t) {
-                        logger.warn("Error while processing {}: {}", payload, t.getMessage());
+                                        Metadata metadata, io.grpc.Status status, boolean takeOwnership) {
+                Payload payload = null;
+                try {
+                    assert payloadProcessor != null;
+                    if (!takeOwnership) {
+                        data.retain();
                     }
+                    payload = new Payload(payloadId, modelId, methodName, metadata, data, status);
+                    if (payloadProcessor.process(payload)) {
+                        data = null; // ownership transferred
+                    }
+                } catch (Throwable t) {
+                    logger.warn("Error while processing payload: {}", payload, t);
+                } finally {
+                    ReferenceCountUtil.release(data);
                 }
             }
 

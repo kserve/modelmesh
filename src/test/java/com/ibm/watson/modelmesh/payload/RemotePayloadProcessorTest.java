@@ -19,6 +19,7 @@ package com.ibm.watson.modelmesh.payload;
 import java.net.URI;
 
 import io.grpc.Metadata;
+import io.grpc.Status;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,7 @@ class RemotePayloadProcessorTest {
         String id = "123";
         String modelId = "456";
         String method = "predict";
-        String kind = "request";
+        Status kind = null;
         Metadata metadata = new Metadata();
         ByteBuf data = Unpooled.buffer(4);
         Payload payload = new Payload(id, modelId, method, metadata, data, kind);

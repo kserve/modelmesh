@@ -892,10 +892,11 @@ public abstract class ModelMesh extends ThriftService
             }
 
             LogRequestHeaders logHeaders = LogRequestHeaders.getConfiguredLogRequestHeaders();
+            PayloadProcessor payloadProcessor = initPayloadProcessor();
 
             grpcServer = new ModelMeshApi((SidecarModelMesh) this, vModelManager, GRPC_PORT, keyCertFile, privateKeyFile,
                     privateKeyPassphrase, clientAuth, caCertFiles, maxGrpcMessageSize, maxGrpcHeadersSize,
-                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders, initPayloadProcessor());
+                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders, payloadProcessor);
         }
 
         if (grpcServer != null) {

@@ -38,7 +38,7 @@ class DummyPayloadProcessor implements PayloadProcessor {
     @Override
     public boolean process(Payload payload) {
         this.processCount.incrementAndGet();
-        return true;
+        return false;
     }
 
     public AtomicInteger getProcessCount() {

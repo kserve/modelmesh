@@ -47,16 +47,16 @@ public class RemotePayloadProcessor implements PayloadProcessor {
 
     @Override
     public boolean process(Payload payload) {
-        return sendPayload(payload, prepareContentBody(payload));
+        return sendPayload(payload);
     }
 
     private static PayloadContent prepareContentBody(Payload payload) {
         String id = payload.getId();
         String modelId = payload.getModelId();
-        String kind = payload.getKind();
+        String kind = payload.getKind().toString().toLowerCase();
+        ByteBuf byteBuf = payload.getData();
         String data;
-        if (payload.getData() != null) {
-            ByteBuf byteBuf = payload.getData();
+        if (byteBuf != null) {
             final byte[] bytes = new byte[byteBuf.readableBytes()];
             byteBuf.getBytes(0, bytes);
             data = Base64.getEncoder().encodeToString(bytes);
@@ -66,25 +66,24 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         return new PayloadContent(id, modelId, data, kind);
     }
 
-    private boolean sendPayload(Payload payload, PayloadContent values) {
-        boolean sent = false;
+
+    private boolean sendPayload(Payload payload) {
         try {
+            PayloadContent payloadContent = prepareContentBody(payload);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(uri)
                     .headers("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(values)))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payloadContent)))
                     .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                logger.warn("Processing {} with request {} didn't succeed: {}", payload, values, response);
-            } else {
-                sent = true;
+                logger.warn("Processing {} with request {} didn't succeed: {}", payload, payloadContent, response);
             }
         } catch (Throwable e) {
             logger.error("An error occurred while sending payload {} to {}: {}", payload, uri, e.getCause());
         }
-        return sent;
+        return false;
     }
 
     @Override
@@ -119,6 +118,16 @@ public class RemotePayloadProcessor implements PayloadProcessor {
 
         public String getData() {
             return data;
+        }
+
+        @Override
+        public String toString() {
+            return "PayloadContent{" +
+                    "id='" + id + '\'' +
+                    ", modelid='" + modelid + '\'' +
+                    ", data='" + data + '\'' +
+                    ", kind='" + kind + '\'' +
+                    '}';
         }
     }
 }

@@ -21,12 +21,19 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import io.grpc.Metadata;
+import io.grpc.Status;
 import io.netty.buffer.ByteBuf;
+import io.netty.util.ReferenceCountUtil;
 
 /**
  * A model-mesh payload.
  */
 public class Payload {
+
+    public enum Kind {
+        REQUEST,
+        RESPONSE;
+    }
 
     private final String id;
 
@@ -38,16 +45,17 @@ public class Payload {
 
     private final ByteBuf data;
 
-    private final String kind;
+    // null for requests, non-null for responses
+    private final Status status;
 
     public Payload(@Nonnull String id, @Nonnull String modelId, @Nullable String method, @Nullable Metadata metadata,
-                   @Nullable ByteBuf data, @Nullable String kind) {
+                   @Nullable ByteBuf data, @Nullable Status status) {
         this.id = id;
         this.modelId = modelId;
         this.method = method;
         this.metadata = metadata;
         this.data = data;
-        this.kind = kind;
+        this.status = status;
     }
 
     @Nonnull
@@ -75,9 +83,13 @@ public class Payload {
         return data;
     }
 
-    @CheckForNull
-    public String getKind() {
-        return kind;
+    @Nonnull
+    public Kind getKind() {
+        return status == null ? Kind.REQUEST : Kind.RESPONSE;
+    }
+
+    public void release() {
+        ReferenceCountUtil.release(this.data);
     }
 
     @Override
@@ -86,7 +98,7 @@ public class Payload {
                 "id='" + id + '\'' +
                 ", modelId='" + modelId + '\'' +
                 ", method='" + method + '\'' +
-                ", kind=" + kind +
+                ", status=" + (status == null ? "request" : String.valueOf(status)) +
                 ", metadata=" + metadata +
                 ", data=" + (data != null ? data.readableBytes() + "B" : "") +
                 '}';
