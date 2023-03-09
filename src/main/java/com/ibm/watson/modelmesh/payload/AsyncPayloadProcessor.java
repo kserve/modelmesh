@@ -39,7 +39,7 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
     private final ScheduledExecutorService executorService;
 
     public AsyncPayloadProcessor(PayloadProcessor delegate) {
-        this(delegate, 1, TimeUnit.MINUTES, Executors.newScheduledThreadPool(2), 1000);
+        this(delegate, 1, TimeUnit.MINUTES, Executors.newScheduledThreadPool(2), 64);
     }
 
     public AsyncPayloadProcessor(PayloadProcessor delegate, int delay, TimeUnit timeUnit,
