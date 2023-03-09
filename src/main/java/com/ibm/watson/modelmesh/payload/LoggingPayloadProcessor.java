@@ -16,6 +16,8 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import java.io.IOException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,5 +34,10 @@ public class LoggingPayloadProcessor implements PayloadProcessor {
     public boolean process(Payload payload) {
         LOG.info("Payload: {}", payload);
         return true;
+    }
+
+    @Override
+    public void close() throws IOException {
+        // do nothing
     }
 }

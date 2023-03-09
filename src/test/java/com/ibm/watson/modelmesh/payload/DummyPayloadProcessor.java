@@ -16,6 +16,7 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 class DummyPayloadProcessor implements PayloadProcessor {
@@ -47,5 +48,10 @@ class DummyPayloadProcessor implements PayloadProcessor {
 
     public void reset() {
         this.processCount.set(0);
+    }
+
+    @Override
+    public void close() throws IOException {
+        // do nothing
     }
 }

@@ -16,6 +16,7 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -89,6 +90,11 @@ public class RemotePayloadProcessor implements PayloadProcessor {
     @Override
     public String getName() {
         return "remote";
+    }
+
+    @Override
+    public void close() throws IOException {
+        // do nothing
     }
 
     private static class PayloadContent {

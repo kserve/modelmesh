@@ -16,6 +16,7 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -62,5 +63,12 @@ public class CompositePayloadProcessor implements PayloadProcessor {
             }
         }
         return false;
+    }
+
+    @Override
+    public void close() throws IOException {
+        for (PayloadProcessor processor : this.delegates) {
+            processor.close();
+        }
     }
 }

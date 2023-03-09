@@ -297,6 +297,13 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
     }
 
     public void shutdown(long timeout, TimeUnit unit) throws InterruptedException {
+        if (payloadProcessor != null) {
+            try {
+                payloadProcessor.close();
+            } catch (IOException e) {
+                logger.warn("Error closing PayloadProcessor {}: {}", payloadProcessor, e.getMessage());
+            }
+        }
         boolean done = timeout > 0 && server.shutdown().awaitTermination(timeout, unit);
         if (!done) {
             server.shutdownNow();

@@ -16,6 +16,8 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import java.io.IOException;
+
 public class MatchingPayloadProcessor implements PayloadProcessor {
 
     private final PayloadProcessor delegate;
@@ -71,5 +73,10 @@ public class MatchingPayloadProcessor implements PayloadProcessor {
             }
         }
         return new MatchingPayloadProcessor(processor, method, modelId);
+    }
+
+    @Override
+    public void close() throws IOException {
+        this.delegate.close();
     }
 }

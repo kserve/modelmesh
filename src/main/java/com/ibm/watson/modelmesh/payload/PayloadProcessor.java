@@ -16,7 +16,9 @@
 
 package com.ibm.watson.modelmesh.payload;
 
-public interface PayloadProcessor {
+import java.io.Closeable;
+
+public interface PayloadProcessor extends Closeable {
 
     String getName();
 

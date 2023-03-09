@@ -16,6 +16,7 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import java.io.IOException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ScheduledExecutorService;
@@ -35,6 +36,8 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
 
     private final AtomicInteger dropped;
 
+    private final ScheduledExecutorService executorService;
+
     public AsyncPayloadProcessor(PayloadProcessor delegate) {
         this(delegate, 1, TimeUnit.MINUTES, Executors.newScheduledThreadPool(2), 1000);
     }
@@ -44,8 +47,9 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
         this.delegate = delegate;
         this.dropped = new AtomicInteger();
         this.payloads = new LinkedBlockingDeque<>(capacity);
+        this.executorService = executorService;
 
-        executorService.execute(() -> {
+        this.executorService.execute(() -> {
             try {
                 while (true) {
                     processPayload(payloads.take());
@@ -61,7 +65,7 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
             logger.info("AsyncPayloadProcessor task exiting");
         });
 
-        executorService.scheduleWithFixedDelay(() -> {
+        this.executorService.scheduleWithFixedDelay(() -> {
             if (dropped.get() > 0) {
                 int droppedRequest = dropped.getAndSet(0);
                 logger.warn("{} payloads were dropped because of {} capacity limit in the last {} {}", droppedRequest,
@@ -100,6 +104,12 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
             dropped.incrementAndGet();
         }
         return enqueued;
+    }
+
+    @Override
+    public void close() throws IOException {
+        this.delegate.close();
+        this.executorService.shutdown();
     }
 
 }
