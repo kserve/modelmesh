@@ -454,7 +454,9 @@ public abstract class ModelMesh extends ThriftService
                     logger.error("Unable to parse PayloadProcessor URI definition {}", processorDefinition);
                 }
             }
-            return new AsyncPayloadProcessor(new CompositePayloadProcessor(payloadProcessors));
+            return new AsyncPayloadProcessor(new CompositePayloadProcessor(payloadProcessors), 1, MINUTES,
+                                             Executors.newScheduledThreadPool(getIntParameter(MM_PAYLOAD_PROCESSORS_THREADS, 2)),
+                                             getIntParameter(MM_PAYLOAD_PROCESSORS_CAPACITY, 64));
         } else {
             return null;
         }
