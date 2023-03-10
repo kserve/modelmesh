@@ -88,6 +88,11 @@ public class Payload {
         return status == null ? Kind.REQUEST : Kind.RESPONSE;
     }
 
+    @Nullable
+    public Status getStatus() {
+        return status;
+    }
+
     public void release() {
         ReferenceCountUtil.release(this.data);
     }

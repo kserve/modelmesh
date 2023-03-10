@@ -34,7 +34,7 @@ class RemotePayloadProcessorTest {
         String id = "123";
         String modelId = "456";
         String method = "predict";
-        Status kind = null;
+        Status kind = Status.INVALID_ARGUMENT;
         Metadata metadata = new Metadata();
         ByteBuf data = Unpooled.buffer(4);
         Payload payload = new Payload(id, modelId, method, metadata, data, kind);

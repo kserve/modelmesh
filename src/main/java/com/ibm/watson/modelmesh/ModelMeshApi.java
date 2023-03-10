@@ -790,14 +790,14 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
             }
 
             /**
-             *
-             * @param data
-             * @param payloadId
-             * @param modelId
-             * @param methodName
-             * @param metadata
+             * Invoke PayloadProcessor on the request/response data
+             * @param data the binary data
+             * @param payloadId the id of the request
+             * @param modelId the id of the model
+             * @param methodName the name of the invoked method
+             * @param metadata the method name metadata
              * @param status null for requests, non-null for responses
-             * @param takeOwnership
+             * @param takeOwnership whether the processor should take ownership
              */
             private void processPayload(ByteBuf data, String payloadId, String modelId, String methodName,
                                         Metadata metadata, io.grpc.Status status, boolean takeOwnership) {

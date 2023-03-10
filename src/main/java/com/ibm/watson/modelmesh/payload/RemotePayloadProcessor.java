@@ -64,7 +64,8 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         } else {
             data = "";
         }
-        return new PayloadContent(id, modelId, data, kind);
+        String status = payload.getStatus() != null ? payload.getStatus().getCode().toString() : "";
+        return new PayloadContent(id, modelId, data, kind, status);
     }
 
 
@@ -97,12 +98,14 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         private final String modelid;
         private final String data;
         private final String kind;
+        private final String status;
 
-        private PayloadContent(String id, String modelid, String data, String kind) {
+        private PayloadContent(String id, String modelid, String data, String kind, String status) {
             this.id = id;
             this.modelid = modelid;
             this.data = data;
             this.kind = kind;
+            this.status = status;
         }
 
         public String getId() {
@@ -121,6 +124,10 @@ public class RemotePayloadProcessor implements PayloadProcessor {
             return data;
         }
 
+        public String getStatus() {
+            return status;
+        }
+
         @Override
         public String toString() {
             return "PayloadContent{" +
@@ -128,6 +135,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
                     ", modelid='" + modelid + '\'' +
                     ", data='" + data + '\'' +
                     ", kind='" + kind + '\'' +
+                    ", status='" + status + '\'' +
                     '}';
         }
     }
