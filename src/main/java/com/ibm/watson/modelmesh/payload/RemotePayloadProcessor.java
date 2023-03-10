@@ -92,11 +92,6 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         return "remote";
     }
 
-    @Override
-    public void close() throws IOException {
-        // do nothing
-    }
-
     private static class PayloadContent {
         private final String id;
         private final String modelid;

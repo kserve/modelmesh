@@ -62,6 +62,11 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
             for (Payload p; (p = payloads.poll()) != null;) {
                 processPayload(p);
             }
+            try {
+                this.delegate.close();
+            } catch (IOException e) {
+                // ignore
+            }
             logger.info("AsyncPayloadProcessor task exiting");
         });
 
@@ -108,8 +113,7 @@ public class AsyncPayloadProcessor implements PayloadProcessor {
 
     @Override
     public void close() throws IOException {
-        this.delegate.close();
-        this.executorService.shutdown();
+        this.executorService.shutdownNow();
     }
 
 }

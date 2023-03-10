@@ -17,6 +17,7 @@
 package com.ibm.watson.modelmesh.payload;
 
 import java.io.Closeable;
+import java.io.IOException;
 
 /**
  * A {@link PayloadProcessor} is responsible for processing {@link Payload}s for models served by model-mesh.
@@ -47,4 +48,7 @@ public interface PayloadProcessor extends Closeable {
      * @return {@code true} if the called method took ownership of the payload, {@code false} otherwise.
      */
     boolean process(Payload payload);
+
+    @Override
+    default void close() throws IOException {}
 }

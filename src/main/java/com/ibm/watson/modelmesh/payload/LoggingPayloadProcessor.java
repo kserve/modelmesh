@@ -36,8 +36,4 @@ public class LoggingPayloadProcessor implements PayloadProcessor {
         return false;
     }
 
-    @Override
-    public void close() throws IOException {
-        // do nothing
-    }
 }
