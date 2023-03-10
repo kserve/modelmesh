@@ -18,22 +18,33 @@ package com.ibm.watson.modelmesh.payload;
 
 import java.io.Closeable;
 
+/**
+ * A {@link PayloadProcessor} is responsible for processing {@link Payload}s for models served by model-mesh.
+ * Processing shall not modify/dispose payload data.
+ */
 public interface PayloadProcessor extends Closeable {
 
+    /**
+     * Get this processor name.
+     *
+     * @return the processor name.
+     */
     String getName();
 
     /**
-     * If this returns false then {@link #process(Payload)} should never return true
+     * Check whether this processor may take ownership (e.g., retaining payload data).
+     * If this returns {@code false} then {@link #process(Payload)} should never return {@code true}.
      */
     default boolean mayTakeOwnership() {
         return false;
     }
 
     /**
-     * @param payload the indices of any contained byte buffers should not be changed
-     * @return true if the called method took ownership of the
-     *    payload, false otherwise.
+     * Process a payload.
+     * The indices of any contained byte buffers should not be changed
+     *
+     * @param payload the payload to be processed.
+     * @return {@code true} if the called method took ownership of the payload, {@code false} otherwise.
      */
     boolean process(Payload payload);
-
 }
