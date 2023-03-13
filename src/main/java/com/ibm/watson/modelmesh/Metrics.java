@@ -44,6 +44,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import static com.ibm.watson.modelmesh.Metric.*;
 import static com.ibm.watson.modelmesh.ModelMesh.M;
@@ -155,7 +156,7 @@ interface Metrics extends AutoCloseable {
         private final boolean shortNames;
         private final EnumMap<Metric, Collector> metricsMap = new EnumMap<>(Metric.class);
 
-        public PrometheusMetrics(Map<String, String> params, LinkedHashMap<String, String> infoMetricParams) throws Exception {
+        public PrometheusMetrics(Map<String, String> params, Map<String, String> infoMetricParams) throws Exception {
             int port = 2112;
             boolean shortNames = true;
             boolean https = true;
@@ -237,8 +238,8 @@ interface Metrics extends AutoCloseable {
                 }
 
                 String metric_name = infoMetricParams.remove("metric_name");
-                String[] labelNames = infoMetricParams.keySet().toArray(new String[0]);
-                String[] labelValues = infoMetricParams.values().toArray(new String[0]);
+                String[] labelNames = infoMetricParams.keySet().toArray(String[]::new);
+                String[] labelValues = Stream.of(labelNames).map(infoMetricParams::get).toArray(String[]::new);
                 Gauge infoMetricsGauge = Gauge.build()
                         .name(metric_name)
                         .help("Info Metrics")

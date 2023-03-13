@@ -919,7 +919,7 @@ public abstract class ModelMesh extends ThriftService
             }
         }
         String infoMetricConfig = getStringParameter(MMESH_CUSTOM_ENV_VAR, null);
-        LinkedHashMap<String, String> infoMetricParams; // To maintain the order when setting values in Gauge builder
+        Map<String, String> infoMetricParams;
         if (infoMetricConfig == null) {
             logger.info("{} returned null", MMESH_CUSTOM_ENV_VAR);
             infoMetricParams = null;
@@ -932,12 +932,12 @@ public abstract class ModelMesh extends ThriftService
             }
             String infoMetricName = infoMetricMatcher.group(1);
             String infoMetricParamString = infoMetricMatcher.group(2);
-            infoMetricParams = new LinkedHashMap<>();
+            infoMetricParams = new HashMap<>();
             infoMetricParams.put("metric_name", infoMetricName);
             for (String infoMetricParam : infoMetricParamString.substring(0).split(",")) {
                 String[] kv = infoMetricParam.split("=");
                 String value = System.getenv(kv[1]);
-                if(value == null){
+                if (value == null) {
                     throw new Exception("Env var " + kv[1] + " is unresolved in " + MMESH_CUSTOM_ENV_VAR + ": \""
                             + infoMetricConfig + "\"");
                 }

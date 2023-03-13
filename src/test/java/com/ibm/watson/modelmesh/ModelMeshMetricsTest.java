@@ -205,8 +205,8 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
         assertTrue(metrics.containsKey("jvm_memory_bytes_committed{area=\"heap\",}"));
 
         // Info metrics
-        assertEquals(1.0, metrics.get("assistant_deployment_info:relabel{deployment=\"" + DEPLOYMENT_NAME
-                + "\",slot=\"" + SLOT_NAME + "\",component=\"" + COMPONENT_NAME + "\",group=\"" + GROUP_NAME + "\",}"));
+        assertEquals(1.0, metrics.get(METRIC_NAME + "{component=\"" + COMPONENT_NAME
+                + "\",slot=\"" + SLOT_NAME + "\",deployment=\"" + DEPLOYMENT_NAME + "\",group=\"" + GROUP_NAME + "\",}"));
     }
 
 }
