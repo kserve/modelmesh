@@ -32,7 +32,7 @@ public class Payload {
 
     public enum Kind {
         REQUEST,
-        RESPONSE;
+        RESPONSE
     }
 
     private final String id;
