@@ -16,11 +16,12 @@
 
 package com.ibm.watson.modelmesh.payload;
 
-import java.io.IOException;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * A {@link PayloadProcessor} that logs {@link Payload}s to a logger (INFO level).
+ */
 public class LoggingPayloadProcessor implements PayloadProcessor {
 
     private final static Logger LOG = LoggerFactory.getLogger(LoggingPayloadProcessor.class);

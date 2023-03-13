@@ -16,6 +16,7 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,14 +27,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class CompositePayloadProcessorTest {
 
     @Test
-    void testPayloadProcessing() {
+    void testPayloadProcessing() throws IOException {
         List<PayloadProcessor> delegates = new ArrayList<>();
         delegates.add(new DummyPayloadProcessor());
         delegates.add(new DummyPayloadProcessor());
 
-        CompositePayloadProcessor payloadProcessor = new CompositePayloadProcessor(delegates);
-        for (int i = 0; i < 10; i++) {
-            payloadProcessor.process(new Payload("123", "456", null, null, null, null));
+        try (CompositePayloadProcessor payloadProcessor = new CompositePayloadProcessor(delegates)) {
+            for (int i = 0; i < 10; i++) {
+                payloadProcessor.process(new Payload("123", "456", null, null, null, null));
+            }
         }
         for (PayloadProcessor p : delegates) {
             DummyPayloadProcessor dummyPayloadProcessor = (DummyPayloadProcessor) p;

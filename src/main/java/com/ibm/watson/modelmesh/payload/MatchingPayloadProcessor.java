@@ -18,6 +18,9 @@ package com.ibm.watson.modelmesh.payload;
 
 import java.io.IOException;
 
+/**
+ * A {@link PayloadProcessor} that processes {@link Payload}s only if they match with given model ID or method name.
+ */
 public class MatchingPayloadProcessor implements PayloadProcessor {
 
     private final PayloadProcessor delegate;

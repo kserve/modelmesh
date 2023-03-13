@@ -26,6 +26,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * An async {@link PayloadProcessor} that queues processing requests and process them asynchronously.
+ */
 public class AsyncPayloadProcessor implements PayloadProcessor {
 
     private static final Logger logger = LoggerFactory.getLogger(AsyncPayloadProcessor.class);

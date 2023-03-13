@@ -23,6 +23,9 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * A composite {@link PayloadProcessor} that delegates processing to multiple delegate {@link PayloadProcessor}s (sequentially).
+ */
 public class CompositePayloadProcessor implements PayloadProcessor {
 
     private static final Logger logger = LoggerFactory.getLogger(CompositePayloadProcessor.class);
@@ -30,9 +33,9 @@ public class CompositePayloadProcessor implements PayloadProcessor {
     private final List<PayloadProcessor> delegates;
 
     /**
-     * If any of the delegate processors take ownership of the payload
+     * If any of the delegate processors take ownership of the payload.
      *
-     * @param delegates
+     * @param delegates the delegate processors
      */
     public CompositePayloadProcessor(List<PayloadProcessor> delegates) {
         if (delegates.stream().anyMatch(PayloadProcessor::mayTakeOwnership)) {
