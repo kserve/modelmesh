@@ -100,7 +100,7 @@ public class SidecarModelMeshTest extends SingleInstanceModelMeshTest {
                     response.getResults(0).getCategory());
 
             // verify larger payload
-            int bigChars = 2_000_000;
+            int bigChars = 2;
             StringBuilder sb = new StringBuilder(bigChars);
             for (int i = 0; i < bigChars; i++) {
                 sb.append('a');

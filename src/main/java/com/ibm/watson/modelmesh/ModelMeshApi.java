@@ -45,6 +45,8 @@ import com.ibm.watson.modelmesh.api.SetVModelRequest;
 import com.ibm.watson.modelmesh.api.UnregisterModelRequest;
 import com.ibm.watson.modelmesh.api.UnregisterModelResponse;
 import com.ibm.watson.modelmesh.api.VModelStatusInfo;
+import com.ibm.watson.modelmesh.payload.Payload;
+import com.ibm.watson.modelmesh.payload.PayloadProcessor;
 import com.ibm.watson.modelmesh.thrift.ApplierException;
 import com.ibm.watson.modelmesh.thrift.InvalidInputException;
 import com.ibm.watson.modelmesh.thrift.InvalidStateException;
@@ -156,6 +158,10 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
     // null if header logging is not enabled.  
     protected final LogRequestHeaders logHeaders;
 
+    private final PayloadProcessor payloadProcessor;
+
+    private final ThreadLocal<long[]> localIdCounter = ThreadLocal.withInitial(() -> new long[1]);
+
     /**
      * Create <b>and start</b> the server.
      *
@@ -171,16 +177,18 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
      * @param maxConnectionAge      in seconds
      * @param maxConnectionAgeGrace in seconds, custom grace time for graceful connection termination
      * @param logHeaders
+     * @param payloadProcessor      a processor of payloads
      * @throws IOException
      */
     public ModelMeshApi(SidecarModelMesh delegate, VModelManager vmm, int port, File keyCert, File privateKey,
             String privateKeyPassphrase, ClientAuth clientAuth, File[] trustCerts,
             int maxMessageSize, int maxHeadersSize, long maxConnectionAge, long maxConnectionAgeGrace,
-            LogRequestHeaders logHeaders) throws IOException {
+            LogRequestHeaders logHeaders, PayloadProcessor payloadProcessor) throws IOException {
 
         this.delegate = delegate;
         this.vmm = vmm;
         this.logHeaders = logHeaders;
+        this.payloadProcessor = payloadProcessor;
 
         this.multiParallelism = getMultiParallelism();
 
@@ -292,6 +300,13 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
         boolean done = timeout > 0 && server.shutdown().awaitTermination(timeout, unit);
         if (!done) {
             server.shutdownNow();
+        }
+        if (payloadProcessor != null) {
+            try {
+                payloadProcessor.close();
+            } catch (IOException e) {
+                logger.warn("Error closing PayloadProcessor {}: {}", payloadProcessor, e.getMessage());
+            }
         }
         threads.shutdownNow();
         shutdownEventLoops();
@@ -686,49 +701,57 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     call.close(INTERNAL.withDescription("Half-closed without a request"), emptyMeta());
                     return;
                 }
-                final int reqSize = reqMessage.readableBytes();
+                int reqReaderIndex = reqMessage.readerIndex();
+                int reqSize = reqMessage.readableBytes();
                 int respSize = -1;
+                int respReaderIndex = 0;
+
                 io.grpc.Status status = INTERNAL;
+                String modelId = null;
+                String requestId = null;
+                ModelResponse response = null;
                 try (InterruptingListener cancelListener = newInterruptingListener()) {
                     if (logHeaders != null) {
                         logHeaders.addToMDC(headers); // MDC cleared in finally block
                     }
-                    ModelResponse response = null;
+                    if (payloadProcessor != null) {
+                        requestId = Thread.currentThread().getId() + "-" + ++localIdCounter.get()[0];
+                    }
                     try {
-                        try {
-                            String balancedMetaVal = headers.get(BALANCED_META_KEY);
-                            Iterator<String> midIt = modelIds.iterator();
-                            // guaranteed at least one
-                            String modelId = validateModelId(midIt.next(), isVModel);
-                            if (!midIt.hasNext()) {
-                                // single model case (most common)
-                                response = callModel(modelId, isVModel, methodName,
-                                        balancedMetaVal, headers, reqMessage).retain();
-                            } else {
-                                // multi-model case (specialized)
-                                boolean allRequired = "all".equalsIgnoreCase(headers.get(REQUIRED_KEY));
-                                List<String> idList = new ArrayList<>();
-                                idList.add(modelId);
-                                while (midIt.hasNext()) {
-                                    idList.add(validateModelId(midIt.next(), isVModel));
-                                }
-                                response = applyParallelMultiModel(idList, isVModel, methodName,
-                                        balancedMetaVal, headers, reqMessage, allRequired);
+                        String balancedMetaVal = headers.get(BALANCED_META_KEY);
+                        Iterator<String> midIt = modelIds.iterator();
+                        // guaranteed at least one
+                        modelId = validateModelId(midIt.next(), isVModel);
+                        if (!midIt.hasNext()) {
+                            // single model case (most common)
+                            response = callModel(modelId, isVModel, methodName,
+                                    balancedMetaVal, headers, reqMessage).retain();
+                        } else {
+                            // multi-model case (specialized)
+                            boolean allRequired = "all".equalsIgnoreCase(headers.get(REQUIRED_KEY));
+                            List<String> idList = new ArrayList<>();
+                            idList.add(modelId);
+                            while (midIt.hasNext()) {
+                                idList.add(validateModelId(midIt.next(), isVModel));
                             }
-                        } finally {
+                            response = applyParallelMultiModel(idList, isVModel, methodName,
+                                    balancedMetaVal, headers, reqMessage, allRequired);
+                        }
+                    } finally {
+                        if (payloadProcessor != null) {
+                            processPayload(reqMessage.readerIndex(reqReaderIndex),
+                                    requestId, modelId, methodName, headers, null, true);
+                        } else {
                             releaseReqMessage();
                         }
-
-                        respSize = response.data.readableBytes();
-                        call.sendHeaders(response.metadata);
-                        call.sendMessage(response.data);
-                        response = null;
-                    } finally {
-                        if (response != null) {
-                            response.release();
-                        }
+                        reqMessage = null; // ownership released or transferred
                     }
 
+                    respReaderIndex = response.data.readerIndex();
+                    respSize = response.data.readableBytes();
+                    call.sendHeaders(response.metadata);
+                    call.sendMessage(response.data);
+                    // response is released via ReleaseAfterResponse.releaseAll()
                     status = OK;
                 } catch (Exception e) {
                     status = toStatus(e);
@@ -745,6 +768,15 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         evictMethodDescriptor(methodName);
                     }
                 } finally {
+                    if (payloadProcessor != null) {
+                        ByteBuf data = null;
+                        Metadata metadata = null;
+                        if (response != null) {
+                            data = response.data.readerIndex(respReaderIndex);
+                            metadata = response.metadata;
+                        }
+                        processPayload(data, requestId, modelId, methodName, metadata, status, false);
+                    }
                     ReleaseAfterResponse.releaseAll();
                     clearThreadLocals();
                     //TODO(maybe) additional trailer info in exception case?
@@ -754,6 +786,35 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
                                 status.getCode(), reqSize, respSize);
                     }
+                }
+            }
+
+            /**
+             * Invoke PayloadProcessor on the request/response data
+             * @param data the binary data
+             * @param payloadId the id of the request
+             * @param modelId the id of the model
+             * @param methodName the name of the invoked method
+             * @param metadata the method name metadata
+             * @param status null for requests, non-null for responses
+             * @param takeOwnership whether the processor should take ownership
+             */
+            private void processPayload(ByteBuf data, String payloadId, String modelId, String methodName,
+                                        Metadata metadata, io.grpc.Status status, boolean takeOwnership) {
+                Payload payload = null;
+                try {
+                    assert payloadProcessor != null;
+                    if (!takeOwnership) {
+                        data.retain();
+                    }
+                    payload = new Payload(payloadId, modelId, methodName, metadata, data, status);
+                    if (payloadProcessor.process(payload)) {
+                        data = null; // ownership transferred
+                    }
+                } catch (Throwable t) {
+                    logger.warn("Error while processing payload: {}", payload, t);
+                } finally {
+                    ReferenceCountUtil.release(data);
                 }
             }
 

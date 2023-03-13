@@ -61,6 +61,12 @@ import com.ibm.watson.modelmesh.ModelRecord.FailureInfo;
 import com.ibm.watson.modelmesh.TypeConstraintManager.ProhibitedTypeSet;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap.EvictionListenerWithTime;
+import com.ibm.watson.modelmesh.payload.AsyncPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.CompositePayloadProcessor;
+import com.ibm.watson.modelmesh.payload.LoggingPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.MatchingPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.PayloadProcessor;
+import com.ibm.watson.modelmesh.payload.RemotePayloadProcessor;
 import com.ibm.watson.modelmesh.thrift.ApplierException;
 import com.ibm.watson.modelmesh.thrift.BaseModelMeshService;
 import com.ibm.watson.modelmesh.thrift.InternalException;
@@ -101,6 +107,7 @@ import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.nio.channels.ClosedByInterruptException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -418,6 +425,40 @@ public abstract class ModelMesh extends ThriftService
         } catch (NumberFormatException nfe) {
             throw new NumberFormatException(
                     PRESTOP_SERVER_PORT_ENV_VAR + " is not a valid port number: " + preStopPort);
+        }
+    }
+
+    private PayloadProcessor initPayloadProcessor() {
+        String payloadProcessorsDefinitions = getStringParameter(MM_PAYLOAD_PROCESSORS, null);
+        logger.info("Parsing PayloadProcessor definition '{}'", payloadProcessorsDefinitions);
+        if (payloadProcessorsDefinitions != null && payloadProcessorsDefinitions.length() > 0) {
+            List<PayloadProcessor> payloadProcessors = new ArrayList<>();
+            for (String processorDefinition : payloadProcessorsDefinitions.split(" ")) {
+                try {
+                    URI uri = URI.create(processorDefinition);
+                    String processorName = uri.getScheme();
+                    PayloadProcessor processor = null;
+                    String modelId = uri.getQuery();
+                    String method = uri.getFragment();
+                    if ("http".equals(processorName)) {
+                        processor = new RemotePayloadProcessor(uri);
+                    } else if ("logger".equals(processorName)) {
+                        processor = new LoggingPayloadProcessor();
+                    }
+                    if (processor != null) {
+                        MatchingPayloadProcessor p = MatchingPayloadProcessor.from(modelId, method, processor);
+                        payloadProcessors.add(p);
+                        logger.info("Added PayloadProcessor {}", p.getName());
+                    }
+                } catch (IllegalArgumentException iae) {
+                    logger.error("Unable to parse PayloadProcessor URI definition {}", processorDefinition);
+                }
+            }
+            return new AsyncPayloadProcessor(new CompositePayloadProcessor(payloadProcessors), 1, MINUTES,
+                                             Executors.newScheduledThreadPool(getIntParameter(MM_PAYLOAD_PROCESSORS_THREADS, 2)),
+                                             getIntParameter(MM_PAYLOAD_PROCESSORS_CAPACITY, 64));
+        } else {
+            return null;
         }
     }
 
@@ -854,10 +895,11 @@ public abstract class ModelMesh extends ThriftService
             }
 
             LogRequestHeaders logHeaders = LogRequestHeaders.getConfiguredLogRequestHeaders();
+            PayloadProcessor payloadProcessor = initPayloadProcessor();
 
             grpcServer = new ModelMeshApi((SidecarModelMesh) this, vModelManager, GRPC_PORT, keyCertFile, privateKeyFile,
                     privateKeyPassphrase, clientAuth, caCertFiles, maxGrpcMessageSize, maxGrpcHeadersSize,
-                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders);
+                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders, payloadProcessor);
         }
 
         if (grpcServer != null) {
