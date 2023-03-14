@@ -68,6 +68,12 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
 
     static final String SCHEME = "https"; // or http
 
+    static final String METRIC_NAME = "assistant_deployment_info:relabel";
+    static final String DEPLOYMENT_NAME = "ga-tf-mm";
+    static final String SLOT_NAME = "ga";
+    static final String COMPONENT_NAME = "tf-mm";
+    static final String GROUP_NAME = "clu";
+
     @Override
     protected Map<String, String> extraEnvVars() {
         return  ImmutableMap.of("MM_METRICS", "prometheus:port=" + METRICS_PORT + ";scheme=" + SCHEME);
@@ -84,7 +90,7 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
 
             // verify not found status
             ModelStatusInfo status = manageModels.getModelStatus(GetStatusRequest.newBuilder()
-                    .setModelId("i don't exist").build());
+                    .setModelId("I don't exist").build());
 
             assertEquals(ModelStatus.NOT_FOUND, status.getStatus());
             assertEquals(0, status.getErrorsCount());
@@ -166,7 +172,6 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
                 .filter(Matcher::matches)
                 .collect(Collectors.toMap(m -> m.group(1), m -> Double.parseDouble(m.group(2))));
 
-
         System.out.println(metrics.size() + " metrics scraped");
 
         // Spot check some expected metrics and values
@@ -198,5 +203,10 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
         assertEquals(0.0, metrics.get("jvm_buffer_pool_used_buffers{pool=\"mapped\",}")); // mmapped memory not used
         assertTrue(metrics.containsKey("jvm_gc_collection_seconds_sum{gc=\"G1 Young Generation\",}"));
         assertTrue(metrics.containsKey("jvm_memory_bytes_committed{area=\"heap\",}"));
+
+        // Info metrics
+        assertEquals(1.0, metrics.get(METRIC_NAME + "{component=\"" + COMPONENT_NAME
+                + "\",slot=\"" + SLOT_NAME + "\",deployment=\"" + DEPLOYMENT_NAME + "\",group=\"" + GROUP_NAME + "\",}"));
     }
+
 }

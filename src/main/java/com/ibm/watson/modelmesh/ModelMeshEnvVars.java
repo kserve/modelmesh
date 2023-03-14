@@ -50,6 +50,7 @@ public final class ModelMeshEnvVars {
     public static final String LOAD_FAILURE_EXPIRY_ENV_VAR = "MM_LOAD_FAILURE_EXPIRY_TIME_MS";
 
     public static final String MMESH_METRICS_ENV_VAR = "MM_METRICS";
+    public static final String MMESH_CUSTOM_ENV_VAR = "MM_INFO_METRICS";
 
     public static final String LOG_EACH_INVOKE_ENV_VAR = "MM_LOG_EACH_INVOKE";
     public static final String SEND_DEST_ID_ENV_VAR = "MM_SEND_DEST_ID";
