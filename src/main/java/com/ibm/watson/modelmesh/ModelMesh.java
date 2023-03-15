@@ -925,7 +925,9 @@ public abstract class ModelMesh extends ThriftService
 //    }
 
     // "type" or "type:p1=v1;p2=v2;...;pn=vn"
-    private static final Pattern METRICS_CONFIG_PATT = Pattern.compile("([a-z]+)(:\\w+=[^;]+(?:;\\w+=[^;]+)*)?");
+    private static final Pattern METRICS_CONFIG_PATT = Pattern.compile("([a-z;]+)(:\\w+=[^;]+(?:;\\w+=[^;]+)*)?");
+    // "metric_name" or "metric:name;l1=v1,l2=v2,...,ln=vn,"
+    private static final Pattern CUSTOM_METRIC_CONFIG_PATT = Pattern.compile("([a-z_:]+);(\\w+=[^;]+(?:;\\w+=[^,]+)*)?");
 
     private static Metrics setUpMetrics() throws Exception {
         if (System.getenv("MM_METRICS_STATSD_PORT") != null || System.getenv("MM_METRICS_PROMETHEUS_PORT") != null) {
@@ -958,12 +960,38 @@ public abstract class ModelMesh extends ThriftService
                 params.put(kv[0], kv[1]);
             }
         }
+        String infoMetricConfig = getStringParameter(MMESH_CUSTOM_ENV_VAR, null);
+        Map<String, String> infoMetricParams;
+        if (infoMetricConfig == null) {
+            logger.info("{} returned null", MMESH_CUSTOM_ENV_VAR);
+            infoMetricParams = null;
+        } else {
+            logger.info("{} set to \"{}\"", MMESH_CUSTOM_ENV_VAR, infoMetricConfig);
+            Matcher infoMetricMatcher = CUSTOM_METRIC_CONFIG_PATT.matcher(infoMetricConfig);
+            if (!infoMetricMatcher.matches()) {
+                throw new Exception("Invalid metrics configuration provided in env var " + MMESH_CUSTOM_ENV_VAR + ": \""
+                                    + infoMetricConfig + "\"");
+            }
+            String infoMetricName = infoMetricMatcher.group(1);
+            String infoMetricParamString = infoMetricMatcher.group(2);
+            infoMetricParams = new HashMap<>();
+            infoMetricParams.put("metric_name", infoMetricName);
+            for (String infoMetricParam : infoMetricParamString.substring(0).split(",")) {
+                String[] kv = infoMetricParam.split("=");
+                String value = System.getenv(kv[1]);
+                if (value == null) {
+                    throw new Exception("Env var " + kv[1] + " is unresolved in " + MMESH_CUSTOM_ENV_VAR + ": \""
+                            + infoMetricConfig + "\"");
+                }
+                infoMetricParams.put(kv[0], value);
+            }
+        }
         try {
             switch (type.toLowerCase()) {
             case "statsd":
                 return new Metrics.StatsDMetrics(params);
             case "prometheus":
-                return new Metrics.PrometheusMetrics(params);
+                return new Metrics.PrometheusMetrics(params, infoMetricParams);
             case "disabled":
                 logger.info("Metrics publishing is disabled (env var {}={})", MMESH_METRICS_ENV_VAR, metricsConfig);
                 return Metrics.NO_OP_METRICS;
