@@ -164,6 +164,13 @@
           </argLine>
           <!-- required to workaround issue with openjdk 8u181-b13-2 -->
           <useSystemClassLoader>false</useSystemClassLoader>
+          <environmentVariables>
+            <MM_INFO_METRICS>assistant_deployment_info:relabel;deployment=DEPLOYMENT_NAME,slot=SLOT_NAME,component=COMPONENT_NAME,group=GROUP_NAME</MM_INFO_METRICS>
+            <DEPLOYMENT_NAME>ga-tf-mm</DEPLOYMENT_NAME>
+            <SLOT_NAME>ga</SLOT_NAME>
+            <COMPONENT_NAME>tf-mm</COMPONENT_NAME>
+            <GROUP_NAME>clu</GROUP_NAME>
+          </environmentVariables>
         </configuration>
       </plugin>
 

@@ -36,6 +36,7 @@ import io.prometheus.client.CollectorRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.lang.reflect.Array;
 import java.net.SocketAddress;
 import java.nio.channels.DatagramChannel;
 import java.util.*;
@@ -43,10 +44,13 @@ import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import static com.ibm.watson.modelmesh.Metric.*;
 import static com.ibm.watson.modelmesh.Metric.MetricType.*;
 import static com.ibm.watson.modelmesh.ModelMesh.M;
+import static com.ibm.watson.modelmesh.ModelMeshEnvVars.MMESH_CUSTOM_ENV_VAR;
+import static com.ibm.watson.modelmesh.ModelMeshEnvVars.MMESH_METRICS_ENV_VAR;
 import static java.util.concurrent.TimeUnit.*;
 
 /**
@@ -151,13 +155,15 @@ interface Metrics extends AutoCloseable {
                 5000, 10000, 20000, 60000, 120000, 300000
         };
 
+        private static final int INFO_METRICS_MAX = 5;
+
         private final CollectorRegistry registry;
         private final NettyServer metricServer;
         private final boolean shortNames;
         private final boolean enablePerModelMetrics;
         private final EnumMap<Metric, Collector> metricsMap = new EnumMap<>(Metric.class);
 
-        public PrometheusMetrics(Map<String, String> params) throws Exception {
+        public PrometheusMetrics(Map<String, String> params, Map<String, String> infoMetricParams) throws Exception {
             int port = 2112;
             boolean shortNames = true;
             boolean https = true;
@@ -240,6 +246,24 @@ interface Metrics extends AutoCloseable {
                 if (!m.global) {
                     registry.register(collector);
                 }
+            }
+
+            if (infoMetricParams != null && !infoMetricParams.isEmpty()){
+                if (infoMetricParams.size() > INFO_METRICS_MAX) {
+                    throw new Exception("Too many info metrics provided in env var " + MMESH_CUSTOM_ENV_VAR + ": \""
+                            + infoMetricParams+ "\". The max is " + INFO_METRICS_MAX);
+                }
+
+                String metric_name = infoMetricParams.remove("metric_name");
+                String[] labelNames = infoMetricParams.keySet().toArray(String[]::new);
+                String[] labelValues = Stream.of(labelNames).map(infoMetricParams::get).toArray(String[]::new);
+                Gauge infoMetricsGauge = Gauge.build()
+                        .name(metric_name)
+                        .help("Info Metrics")
+                        .labelNames(labelNames)
+                        .create();
+                infoMetricsGauge.labels(labelValues).set(1.0);
+                registry.register(infoMetricsGauge);
             }
 
             this.metricServer = new NettyServer(registry, port, https);

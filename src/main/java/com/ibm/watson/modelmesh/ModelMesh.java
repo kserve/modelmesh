@@ -61,6 +61,12 @@ import com.ibm.watson.modelmesh.ModelRecord.FailureInfo;
 import com.ibm.watson.modelmesh.TypeConstraintManager.ProhibitedTypeSet;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap.EvictionListenerWithTime;
+import com.ibm.watson.modelmesh.payload.AsyncPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.CompositePayloadProcessor;
+import com.ibm.watson.modelmesh.payload.LoggingPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.MatchingPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.PayloadProcessor;
+import com.ibm.watson.modelmesh.payload.RemotePayloadProcessor;
 import com.ibm.watson.modelmesh.thrift.ApplierException;
 import com.ibm.watson.modelmesh.thrift.BaseModelMeshService;
 import com.ibm.watson.modelmesh.thrift.InternalException;
@@ -101,6 +107,7 @@ import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.nio.channels.ClosedByInterruptException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -418,6 +425,40 @@ public abstract class ModelMesh extends ThriftService
         } catch (NumberFormatException nfe) {
             throw new NumberFormatException(
                     PRESTOP_SERVER_PORT_ENV_VAR + " is not a valid port number: " + preStopPort);
+        }
+    }
+
+    private PayloadProcessor initPayloadProcessor() {
+        String payloadProcessorsDefinitions = getStringParameter(MM_PAYLOAD_PROCESSORS, null);
+        logger.info("Parsing PayloadProcessor definition '{}'", payloadProcessorsDefinitions);
+        if (payloadProcessorsDefinitions != null && payloadProcessorsDefinitions.length() > 0) {
+            List<PayloadProcessor> payloadProcessors = new ArrayList<>();
+            for (String processorDefinition : payloadProcessorsDefinitions.split(" ")) {
+                try {
+                    URI uri = URI.create(processorDefinition);
+                    String processorName = uri.getScheme();
+                    PayloadProcessor processor = null;
+                    String modelId = uri.getQuery();
+                    String method = uri.getFragment();
+                    if ("http".equals(processorName)) {
+                        processor = new RemotePayloadProcessor(uri);
+                    } else if ("logger".equals(processorName)) {
+                        processor = new LoggingPayloadProcessor();
+                    }
+                    if (processor != null) {
+                        MatchingPayloadProcessor p = MatchingPayloadProcessor.from(modelId, method, processor);
+                        payloadProcessors.add(p);
+                        logger.info("Added PayloadProcessor {}", p.getName());
+                    }
+                } catch (IllegalArgumentException iae) {
+                    logger.error("Unable to parse PayloadProcessor URI definition {}", processorDefinition);
+                }
+            }
+            return new AsyncPayloadProcessor(new CompositePayloadProcessor(payloadProcessors), 1, MINUTES,
+                                             Executors.newScheduledThreadPool(getIntParameter(MM_PAYLOAD_PROCESSORS_THREADS, 2)),
+                                             getIntParameter(MM_PAYLOAD_PROCESSORS_CAPACITY, 64));
+        } else {
+            return null;
         }
     }
 
@@ -854,10 +895,11 @@ public abstract class ModelMesh extends ThriftService
             }
 
             LogRequestHeaders logHeaders = LogRequestHeaders.getConfiguredLogRequestHeaders();
+            PayloadProcessor payloadProcessor = initPayloadProcessor();
 
             grpcServer = new ModelMeshApi((SidecarModelMesh) this, vModelManager, GRPC_PORT, keyCertFile, privateKeyFile,
                     privateKeyPassphrase, clientAuth, caCertFiles, maxGrpcMessageSize, maxGrpcHeadersSize,
-                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders);
+                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders, payloadProcessor);
         }
 
         if (grpcServer != null) {
@@ -883,7 +925,9 @@ public abstract class ModelMesh extends ThriftService
 //    }
 
     // "type" or "type:p1=v1;p2=v2;...;pn=vn"
-    private static final Pattern METRICS_CONFIG_PATT = Pattern.compile("([a-z]+)(:\\w+=[^;]+(?:;\\w+=[^;]+)*)?");
+    private static final Pattern METRICS_CONFIG_PATT = Pattern.compile("([a-z;]+)(:\\w+=[^;]+(?:;\\w+=[^;]+)*)?");
+    // "metric_name" or "metric:name;l1=v1,l2=v2,...,ln=vn,"
+    private static final Pattern CUSTOM_METRIC_CONFIG_PATT = Pattern.compile("([a-z_:]+);(\\w+=[^;]+(?:;\\w+=[^,]+)*)?");
 
     private static Metrics setUpMetrics() throws Exception {
         if (System.getenv("MM_METRICS_STATSD_PORT") != null || System.getenv("MM_METRICS_PROMETHEUS_PORT") != null) {
@@ -916,12 +960,38 @@ public abstract class ModelMesh extends ThriftService
                 params.put(kv[0], kv[1]);
             }
         }
+        String infoMetricConfig = getStringParameter(MMESH_CUSTOM_ENV_VAR, null);
+        Map<String, String> infoMetricParams;
+        if (infoMetricConfig == null) {
+            logger.info("{} returned null", MMESH_CUSTOM_ENV_VAR);
+            infoMetricParams = null;
+        } else {
+            logger.info("{} set to \"{}\"", MMESH_CUSTOM_ENV_VAR, infoMetricConfig);
+            Matcher infoMetricMatcher = CUSTOM_METRIC_CONFIG_PATT.matcher(infoMetricConfig);
+            if (!infoMetricMatcher.matches()) {
+                throw new Exception("Invalid metrics configuration provided in env var " + MMESH_CUSTOM_ENV_VAR + ": \""
+                                    + infoMetricConfig + "\"");
+            }
+            String infoMetricName = infoMetricMatcher.group(1);
+            String infoMetricParamString = infoMetricMatcher.group(2);
+            infoMetricParams = new HashMap<>();
+            infoMetricParams.put("metric_name", infoMetricName);
+            for (String infoMetricParam : infoMetricParamString.substring(0).split(",")) {
+                String[] kv = infoMetricParam.split("=");
+                String value = System.getenv(kv[1]);
+                if (value == null) {
+                    throw new Exception("Env var " + kv[1] + " is unresolved in " + MMESH_CUSTOM_ENV_VAR + ": \""
+                            + infoMetricConfig + "\"");
+                }
+                infoMetricParams.put(kv[0], value);
+            }
+        }
         try {
             switch (type.toLowerCase()) {
             case "statsd":
                 return new Metrics.StatsDMetrics(params);
             case "prometheus":
-                return new Metrics.PrometheusMetrics(params);
+                return new Metrics.PrometheusMetrics(params, infoMetricParams);
             case "disabled":
                 logger.info("Metrics publishing is disabled (env var {}={})", MMESH_METRICS_ENV_VAR, metricsConfig);
                 return Metrics.NO_OP_METRICS;
