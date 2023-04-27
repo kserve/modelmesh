@@ -21,6 +21,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.buffer.ByteBuf;
@@ -65,7 +66,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
             data = "";
         }
         String status = payload.getStatus() != null ? payload.getStatus().getCode().toString() : "";
-        return new PayloadContent(id, modelId, data, kind, status);
+        return new PayloadContent(id, modelId, data, kind, status, payload.getEndpointInformation());
     }
 
 
@@ -100,12 +101,16 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         private final String kind;
         private final String status;
 
-        private PayloadContent(String id, String modelid, String data, String kind, String status) {
+        private final Map<String, String> endpointinformation;
+
+        private PayloadContent(String id, String modelid, String data, String kind, String status,
+                               Map<String, String> endpointinformation) {
             this.id = id;
             this.modelid = modelid;
             this.data = data;
             this.kind = kind;
             this.status = status;
+            this.endpointinformation = endpointinformation;
         }
 
         public String getId() {
@@ -128,6 +133,10 @@ public class RemotePayloadProcessor implements PayloadProcessor {
             return status;
         }
 
+        public Map<String, String> getEndpointinformation() {
+            return endpointinformation;
+        }
+
         @Override
         public String toString() {
             return "PayloadContent{" +
@@ -136,6 +145,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
                     ", data='" + data + '\'' +
                     ", kind='" + kind + '\'' +
                     ", status='" + status + '\'' +
+                    ", endpointinformation='" + endpointinformation + '\'' +
                     '}';
         }
     }

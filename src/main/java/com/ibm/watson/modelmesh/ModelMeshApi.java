@@ -55,6 +55,7 @@ import com.ibm.watson.modelmesh.thrift.ModelMeshService;
 import com.ibm.watson.modelmesh.thrift.ModelNotFoundException;
 import com.ibm.watson.modelmesh.thrift.Status;
 import com.ibm.watson.modelmesh.thrift.StatusInfo;
+import io.grpc.Attributes;
 import io.grpc.Context;
 import io.grpc.Contexts;
 import io.grpc.Deadline;
@@ -84,6 +85,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.ssl.ClientAuth;
 import io.netty.handler.ssl.SslContext;
+import io.netty.util.Attribute;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.FastThreadLocalThread;
 import org.apache.thrift.TException;
@@ -99,6 +101,7 @@ import java.io.InputStream;
 import java.io.SequenceInputStream;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -739,8 +742,9 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         }
                     } finally {
                         if (payloadProcessor != null) {
-                            processPayload(reqMessage.readerIndex(reqReaderIndex),
-                                    requestId, modelId, methodName, headers, null, true);
+                            // call.getAttributes().get(Grpc.TRANSPORT_ATTR_LOCAL_ADDR)
+                            processPayload(reqMessage.readerIndex(reqReaderIndex), requestId, modelId, methodName,
+                                           headers, null, true, getEndpointInformation(call));
                         } else {
                             releaseReqMessage();
                         }
@@ -775,7 +779,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                             data = response.data.readerIndex(respReaderIndex);
                             metadata = response.metadata;
                         }
-                        processPayload(data, requestId, modelId, methodName, metadata, status, false);
+                        processPayload(data, requestId, modelId, methodName, metadata, status, false, getEndpointInformation(call));
                     }
                     ReleaseAfterResponse.releaseAll();
                     clearThreadLocals();
@@ -798,16 +802,18 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
              * @param metadata the method name metadata
              * @param status null for requests, non-null for responses
              * @param takeOwnership whether the processor should take ownership
+             * @param endpointInformation information about the prediction endpoint
              */
             private void processPayload(ByteBuf data, String payloadId, String modelId, String methodName,
-                                        Metadata metadata, io.grpc.Status status, boolean takeOwnership) {
+                                        Metadata metadata, io.grpc.Status status, boolean takeOwnership,
+                                        Map<String, String> endpointInformation) {
                 Payload payload = null;
                 try {
                     assert payloadProcessor != null;
                     if (!takeOwnership) {
                         data.retain();
                     }
-                    payload = new Payload(payloadId, modelId, methodName, metadata, data, status);
+                    payload = new Payload(payloadId, modelId, methodName, metadata, data, status, endpointInformation);
                     if (payloadProcessor.process(payload)) {
                         data = null; // ownership transferred
                     }
@@ -831,6 +837,17 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                 reqMessage = null;
             }
         };
+    }
+
+    private Map<String, String> getEndpointInformation(ServerCall<ByteBuf, ByteBuf> call) {
+        Map<String, String> endpointInformation = new HashMap<>();
+        Attributes attributes = call.getAttributes();
+        endpointInformation.put("transport.local", attributes.get(Attributes.Key.create("io.grpc.Grpc.TRANSPORT_ATTR_LOCAL_ADDR")));
+        endpointInformation.put("transport.remote", attributes.get(Attributes.Key.create("io.grpc.Grpc.TRANSPORT_ATTR_REMOTE_ADDR")));
+        endpointInformation.put("authority", call.getAuthority());
+        endpointInformation.put("method.name", call.getMethodDescriptor().getFullMethodName());
+        endpointInformation.put("service.name", call.getMethodDescriptor().getServiceName());
+        return endpointInformation;
     }
 
     // throws StatusRuntimeException

@@ -16,6 +16,8 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import java.util.Map;
+
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -48,14 +50,17 @@ public class Payload {
     // null for requests, non-null for responses
     private final Status status;
 
+    private final Map<String, String> endpointInformation;
+
     public Payload(@Nonnull String id, @Nonnull String modelId, @Nullable String method, @Nullable Metadata metadata,
-                   @Nullable ByteBuf data, @Nullable Status status) {
+                   @Nullable ByteBuf data, @Nullable Status status, @Nullable Map<String, String> endpointInformation) {
         this.id = id;
         this.modelId = modelId;
         this.method = method;
         this.metadata = metadata;
         this.data = data;
         this.status = status;
+        this.endpointInformation = endpointInformation;
     }
 
     @Nonnull
@@ -93,6 +98,11 @@ public class Payload {
         return status;
     }
 
+    @CheckForNull
+    public Map<String, String> getEndpointInformation() {
+        return endpointInformation;
+    }
+
     public void release() {
         ReferenceCountUtil.release(this.data);
     }
@@ -105,6 +115,7 @@ public class Payload {
                 ", method='" + method + '\'' +
                 ", status=" + (status == null ? "request" : String.valueOf(status)) +
                 ", metadata=" + metadata +
+                ", endpointInformation=" + endpointInformation +
                 ", data=" + (data != null ? data.readableBytes() + "B" : "") +
                 '}';
     }

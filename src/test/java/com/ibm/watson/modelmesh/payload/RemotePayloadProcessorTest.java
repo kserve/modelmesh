@@ -37,7 +37,7 @@ class RemotePayloadProcessorTest {
         Status kind = Status.INVALID_ARGUMENT;
         Metadata metadata = new Metadata();
         ByteBuf data = Unpooled.buffer(4);
-        Payload payload = new Payload(id, modelId, method, metadata, data, kind);
+        Payload payload = new Payload(id, modelId, method, metadata, data, kind, null);
         assertFalse(remotePayloadProcessor.process(payload));
     }
 }

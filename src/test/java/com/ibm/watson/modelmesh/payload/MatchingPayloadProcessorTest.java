@@ -31,13 +31,13 @@ class MatchingPayloadProcessorTest {
         AtomicInteger counter = new AtomicInteger();
         PayloadProcessor delegate = new DummyPayloadProcessor(counter);
         MatchingPayloadProcessor payloadProcessor = MatchingPayloadProcessor.from(null, null, delegate);
-        payloadProcessor.process(new Payload("123", "456", null, null, null, null));
+        payloadProcessor.process(new Payload("123", "456", null, null, null, null, null));
         assertEquals(1, counter.get());
-        payloadProcessor.process(new Payload("456", "456", null, null, null, null));
+        payloadProcessor.process(new Payload("456", "456", null, null, null, null, null));
         assertEquals(2, counter.get());
-        payloadProcessor.process(new Payload("789", "456", null, null, null, null));
+        payloadProcessor.process(new Payload("789", "456", null, null, null, null, null));
         assertEquals(3, counter.get());
-        payloadProcessor.process(new Payload("abc", "456", "processRequest", null, null, null));
+        payloadProcessor.process(new Payload("abc", "456", "processRequest", null, null, null, null));
         assertEquals(4, counter.get());
     }
 
@@ -55,13 +55,13 @@ class MatchingPayloadProcessorTest {
         processors.add(MatchingPayloadProcessor.from("", "*", delegate));
         processors.add(MatchingPayloadProcessor.from("", "*", delegate));
         for (PayloadProcessor payloadProcessor : processors) {
-            payloadProcessor.process(new Payload("123", "456", null, null, null, null));
+            payloadProcessor.process(new Payload("123", "456", null, null, null, null, null));
             assertEquals(1, counter.get());
-            payloadProcessor.process(new Payload("456", "456", null, null, null, null));
+            payloadProcessor.process(new Payload("456", "456", null, null, null, null, null));
             assertEquals(2, counter.get());
-            payloadProcessor.process(new Payload("789", "456", "processRequest", null, null, null));
+            payloadProcessor.process(new Payload("789", "456", "processRequest", null, null, null, null));
             assertEquals(3, counter.get());
-            payloadProcessor.process(new Payload("abc", "456", "processRequest", null, null, null));
+            payloadProcessor.process(new Payload("abc", "456", "processRequest", null, null, null, null));
             assertEquals(4, counter.get());
             delegate.reset();
         }
@@ -72,13 +72,13 @@ class MatchingPayloadProcessorTest {
         AtomicInteger counter = new AtomicInteger();
         DummyPayloadProcessor delegate = new DummyPayloadProcessor(counter);
         MatchingPayloadProcessor payloadProcessor = MatchingPayloadProcessor.from("someModelId", null, delegate);
-        payloadProcessor.process(new Payload("123", "nogo", null, null, null, null));
+        payloadProcessor.process(new Payload("123", "nogo", null, null, null, null, null));
         assertEquals(0, counter.get());
-        payloadProcessor.process(new Payload("456", "someModelId", null, null, null, null));
+        payloadProcessor.process(new Payload("456", "someModelId", null, null, null, null, null));
         assertEquals(1, counter.get());
-        payloadProcessor.process(new Payload( "789", "nogo", "processRequest", null, null, null));
+        payloadProcessor.process(new Payload( "789", "nogo", "processRequest", null, null, null, null));
         assertEquals(1, counter.get());
-        payloadProcessor.process(new Payload( "abc", "someModelId", "processRequest", null, null, null));
+        payloadProcessor.process(new Payload( "abc", "someModelId", "processRequest", null, null, null, null));
         assertEquals(2, counter.get());
     }
 
@@ -87,15 +87,15 @@ class MatchingPayloadProcessorTest {
         AtomicInteger counter = new AtomicInteger();
         DummyPayloadProcessor delegate = new DummyPayloadProcessor(counter);
         MatchingPayloadProcessor payloadProcessor = MatchingPayloadProcessor.from(null, "getName", delegate);
-        payloadProcessor.process(new Payload("123", "456", null, null, null, null));
+        payloadProcessor.process(new Payload("123", "456", null, null, null, null, null));
         assertEquals(0, counter.get());
-        payloadProcessor.process(new Payload("456", "456", null, null, null, null));
+        payloadProcessor.process(new Payload("456", "456", null, null, null, null, null));
         assertEquals(0, counter.get());
-        payloadProcessor.process(new Payload("789", "456", "getName", null, null, null));
+        payloadProcessor.process(new Payload("789", "456", "getName", null, null, null, null));
         assertEquals(1, counter.get());
-        payloadProcessor.process(new Payload("abc", "456", "getName", null, null, null));
+        payloadProcessor.process(new Payload("abc", "456", "getName", null, null, null, null));
         assertEquals(2, counter.get());
-        payloadProcessor.process(new Payload("def", "456", "filteredMethod", null, null, null));
+        payloadProcessor.process(new Payload("def", "456", "filteredMethod", null, null, null, null));
         assertEquals(2, counter.get());
     }
 }

@@ -35,7 +35,7 @@ class AsyncPayloadProcessorTest {
         AsyncPayloadProcessor payloadProcessor = new AsyncPayloadProcessor(dummyPayloadProcessor, 1, TimeUnit.NANOSECONDS, scheduler, 100);
 
         for (int i = 0; i < 10; i++) {
-            payloadProcessor.process(new Payload("123", "456", null, null, null, null));
+            payloadProcessor.process(new Payload("123", "456", null, null, null, null, null));
         }
         try {
             assertFalse(scheduler.awaitTermination(1, TimeUnit.SECONDS));
@@ -43,7 +43,7 @@ class AsyncPayloadProcessorTest {
             // ignore it
         }
         for (int i = 0; i < 10; i++) {
-            payloadProcessor.process(new Payload("123", "456", null, null, null, null));
+            payloadProcessor.process(new Payload("123", "456", null, null, null, null, null));
         }
         try {
             assertFalse(scheduler.awaitTermination(1, TimeUnit.SECONDS));
