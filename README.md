@@ -40,10 +40,10 @@ Sample build:
 ```bash
 GIT_COMMIT=$(git rev-parse HEAD)
 BUILD_ID=$(date '+%Y%m%d')-$(git rev-parse HEAD | cut -c -5)
-IMAGE_TAG_VERSION=0.0.1
+IMAGE_TAG_VERSION="dev"
 IMAGE_TAG=${IMAGE_TAG_VERSION}-$(git branch --show-current)_${BUILD_ID}
 
-docker build -t model-mesh:${IMAGE_TAG} \
+docker build -t modelmesh:${IMAGE_TAG} \
     --build-arg imageVersion=${IMAGE_TAG} \
     --build-arg buildId=${BUILD_ID} \
     --build-arg commitSha=${GIT_COMMIT} .
