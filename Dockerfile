@@ -26,6 +26,8 @@ LABEL image="build_base"
 
 USER root
 
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+
 RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
     microdnf --setopt=cachedir=/root/.cache/microdnf --nodocs install \
        java-17-openjdk-devel \
@@ -33,6 +35,7 @@ RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
     && microdnf update --nodocs \
     && sed -i 's:security.provider.12=SunPKCS11:#security.provider.12=SunPKCS11:g' /usr/lib/jvm/java-17-openjdk-*/conf/security/java.security \
     && sed -i 's:#security.provider.1=SunPKCS11 ${java.home}/lib/security/nss.cfg:security.provider.12=SunPKCS11 ${java.home}/lib/security/nss.cfg:g' /usr/lib/jvm/java-17-openjdk-*/conf/security/java.security \
+    && java -version \
     && true
 
 RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
@@ -43,20 +46,21 @@ RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
        maven \
     && true
 
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
-
 # Install etcd -- used for CI tests
-RUN wget -q https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-${TARGETOS:-linux}-${TARGETARCH:-amd64}.tar.gz && \
-    mkdir -p /usr/lib/etcd && \
-    tar xzf etcd-*-${TARGETOS:-linux}-${TARGETARCH:-amd64}.tar.gz -C /usr/lib/etcd --strip-components=1 --no-same-owner && \
-    rm -rf etcd*.gz
-
 ENV PATH="/usr/lib/etcd:$PATH"
+RUN true \
+    && wget -q https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-${TARGETOS:-linux}-${TARGETARCH:-amd64}.tar.gz \
+    && mkdir -p /usr/lib/etcd \
+    && tar xzf etcd-*-${TARGETOS:-linux}-${TARGETARCH:-amd64}.tar.gz -C /usr/lib/etcd --strip-components=1 --no-same-owner \
+    && rm -rf etcd*.gz \
+    && etcd -version \
+    && true
 
 # Copy in code
 RUN mkdir /build
 
 WORKDIR /build
+
 
 ###############################################################################
 FROM build_base AS build
@@ -70,14 +74,17 @@ ENV MAVEN_OPTS="-Dfile.encoding=UTF8"
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B package -DskipTests=true --file pom.xml
 
+
 ###############################################################################
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6 AS runtime
 
 # TODO: FROM registry.access.redhat.com/ubi8/openjdk-17-runtime:1.15
 
 ARG USER=2000
 
 USER root
+
+ENV JAVA_HOME=/usr/lib/jvm/jre-17-openjdk
 
 RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
     microdnf --setopt=cachedir=/root/.cache/microdnf --nodocs install \
@@ -86,9 +93,8 @@ RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
     && microdnf update --nodocs \
     && sed -i 's:security.provider.12=SunPKCS11:#security.provider.12=SunPKCS11:g' /usr/lib/jvm/java-17-openjdk-*/conf/security/java.security \
     && sed -i 's:#security.provider.1=SunPKCS11 ${java.home}/lib/security/nss.cfg:security.provider.12=SunPKCS11 ${java.home}/lib/security/nss.cfg:g' /usr/lib/jvm/java-17-openjdk-*/conf/security/java.security \
+    && java -version \
     && true
-
-ENV JAVA_HOME=/usr/lib/jvm/jre-17-openjdk
 
 COPY --from=build /build/target/dockerhome/ /opt/kserve/mmesh/
 
@@ -109,7 +115,8 @@ RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
     && ln -s /opt/kserve/mmesh /opt/kserve/tas \
     && mkdir -p log \
     && chown -R app:0 . \
-    && chmod -R 771 . && chmod 775 *.sh *.py \
+    && chmod -R 771 . \
+    && chmod 775 *.sh *.py \
     # Disable java FIPS - see https://access.redhat.com/documentation/en-us/openjdk/17/html-single/configuring_openjdk_17_on_rhel_with_fips/index#config-fips-in-openjdk
     && sed -i 's/security.useSystemPropertiesFile=true/security.useSystemPropertiesFile=false/g' $JAVA_HOME/conf/security/java.security \
     && true
