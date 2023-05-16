@@ -21,8 +21,13 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.grpc.CallOptions;
+import io.grpc.Metadata;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.base64.Base64;
 import org.slf4j.Logger;
@@ -64,8 +69,16 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         } else {
             data = "";
         }
+        Metadata metadata = payload.getMetadata();
+        Map<String, String> metadataMap = new HashMap<>();
+        if (metadata != null) {
+            for (String key : metadata.keys()) {
+                String value = metadata.get(Metadata.Key.of(key, Metadata.ASCII_STRING_MARSHALLER));
+                metadataMap.put(key, value);
+            }
+        }
         String status = payload.getStatus() != null ? payload.getStatus().getCode().toString() : "";
-        return new PayloadContent(id, modelId, data, kind, status);
+        return new PayloadContent(id, modelId, data, kind, status, metadataMap);
     }
 
 
@@ -99,13 +112,16 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         private final String data;
         private final String kind;
         private final String status;
+        private final Map<String, String> metadata;
 
-        private PayloadContent(String id, String modelid, String data, String kind, String status) {
+        private PayloadContent(String id, String modelid, String data, String kind, String status,
+                               Map<String, String> metadata) {
             this.id = id;
             this.modelid = modelid;
             this.data = data;
             this.kind = kind;
             this.status = status;
+            this.metadata = metadata;
         }
 
         public String getId() {
@@ -128,6 +144,10 @@ public class RemotePayloadProcessor implements PayloadProcessor {
             return status;
         }
 
+        public Map<String, String> getMetadata() {
+            return metadata;
+        }
+
         @Override
         public String toString() {
             return "PayloadContent{" +
@@ -136,6 +156,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
                     ", data='" + data + '\'' +
                     ", kind='" + kind + '\'' +
                     ", status='" + status + '\'' +
+                    ", metadata='" + metadata + '\'' +
                     '}';
         }
     }
