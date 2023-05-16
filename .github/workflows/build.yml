@@ -1,36 +1,49 @@
-name: Build and Push
+name: Build
 
 on:
-  push:
-    branches: [ main ]
-    tags:
-      - v*
   pull_request:
+    branches:
+      - main
+      - "release-[0-9].[0-9]+"
+    paths-ignore:
+      - "**.md"
+  push:
+    branches:
+      - main
+      - "release-[0-9].[0-9]+"
+    tags:
+      - "v*"
+    paths-ignore:
+      - "**.md"
+
+env:
+  IMAGE_NAME: "kserve/modelmesh"
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up JDK 17
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set up Java 17
       uses: actions/setup-java@v3.1.1
       with:
         java-version: '17'
         distribution: 'temurin'
+
     - name: Install etcd
       run: sudo ./.github/install-etcd.sh
-    - name: Build with Maven
+
+    - name: Build and Test with Maven
       run: mvn -B package --file pom.xml
 
   build:
     needs: test
     runs-on: ubuntu-latest
-
-    env:
-      IMAGE_NAME: kserve/modelmesh
-
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v3
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v2
@@ -45,7 +58,7 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
 
-      - name: Export version variables
+      - name: Export docker build args
         run: |
           GIT_COMMIT=$(git rev-parse HEAD)
           BUILD_ID=$(date '+%Y%m%d')-$(git rev-parse HEAD | cut -c -5)
@@ -53,24 +66,30 @@ jobs:
           # Strip git ref prefix from version
           VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
 
+          # Generate PR tag from github.ref == "refs/pull/123/merge"
+          [ "$VERSION" == "merge" ] && VERSION=$(echo "${{ github.ref }}" | sed -e 's,refs/pull/\(.*\)/merge,pr-\1,')
+
           # Use Docker `latest` tag convention
           [ "$VERSION" == "main" ] && VERSION=latest
 
           echo "GIT_COMMIT=$GIT_COMMIT" >> $GITHUB_ENV
-          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "BUILD_ID=$BUILD_ID"     >> $GITHUB_ENV
+          echo "VERSION=$VERSION"       >> $GITHUB_ENV
 
-      - name: Build and push
-        uses: docker/build-push-action@v3
+          # print env vars for debugging
+          cat "$GITHUB_ENV"
+
+      - name: Build and push runtime image
+        uses: docker/build-push-action@v4
         with:
           # for linux/s390x, maven errors due to missing io.grpc:protoc-gen-grpc-java:exe:linux-s390_64:1.51.1
           platforms: linux/amd64,linux/arm64/v8,linux/ppc64le
-          pull: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          target: runtime
           push: ${{ github.event_name == 'push' }}
           tags: ${{ env.IMAGE_NAME }}:${{ env.VERSION }}
           build-args: |
             imageVersion=${{ env.VERSION }}
             buildId=${{ env.BUILD_ID }}
             commitSha=${{ env.GIT_COMMIT }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
