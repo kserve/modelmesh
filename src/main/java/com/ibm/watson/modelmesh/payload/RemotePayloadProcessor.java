@@ -23,10 +23,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.grpc.CallOptions;
 import io.grpc.Metadata;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.base64.Base64;
