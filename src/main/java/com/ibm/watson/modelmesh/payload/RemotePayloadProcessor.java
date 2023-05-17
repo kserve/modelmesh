@@ -27,6 +27,7 @@ import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.Metadata;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.base64.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,9 +62,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         ByteBuf byteBuf = payload.getData();
         String data;
         if (byteBuf != null) {
-            ByteBuf encoded = Base64.encode(byteBuf, byteBuf.readerIndex(), byteBuf.readableBytes(), false);
-            //TODO custom jackson serialization for this field to avoid round-tripping to string
-            data = encoded.toString(StandardCharsets.US_ASCII);
+            data = encodeBinaryToString(byteBuf);
         } else {
             data = "";
         }
@@ -71,14 +70,26 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         Map<String, String> metadataMap = new HashMap<>();
         if (metadata != null) {
             for (String key : metadata.keys()) {
-                String value = metadata.get(Metadata.Key.of(key, Metadata.ASCII_STRING_MARSHALLER));
-                metadataMap.put(key, value);
+                if (key.endsWith("-bin")) {
+                    byte[] bytes = metadata.get(Metadata.Key.of(key, Metadata.BINARY_BYTE_MARSHALLER));
+                    if (bytes != null) {
+                        metadataMap.put(key, encodeBinaryToString(Unpooled.wrappedBuffer(bytes)));
+                    }
+                } else {
+                    String value = metadata.get(Metadata.Key.of(key, Metadata.ASCII_STRING_MARSHALLER));
+                    metadataMap.put(key, value);
+                }
             }
         }
         String status = payload.getStatus() != null ? payload.getStatus().getCode().toString() : "";
         return new PayloadContent(id, modelId, data, kind, status, metadataMap);
     }
 
+    private static String encodeBinaryToString(ByteBuf byteBuf) {
+        ByteBuf encodedBinary = Base64.encode(byteBuf, byteBuf.readerIndex(), byteBuf.readableBytes(), false);
+        //TODO custom jackson serialization for this field to avoid round-tripping to string
+        return encodedBinary.toString(StandardCharsets.US_ASCII);
+    }
 
     private boolean sendPayload(Payload payload) {
         try {
@@ -105,6 +116,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
     }
 
     private static class PayloadContent {
+
         private final String id;
         private final String modelid;
         private final String data;

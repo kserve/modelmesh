@@ -36,6 +36,8 @@ class RemotePayloadProcessorTest {
         String method = "predict";
         Status kind = Status.INVALID_ARGUMENT;
         Metadata metadata = new Metadata();
+        metadata.put(Metadata.Key.of("foo", Metadata.ASCII_STRING_MARSHALLER), "bar");
+        metadata.put(Metadata.Key.of("binary-bin", Metadata.BINARY_BYTE_MARSHALLER), "string".getBytes());
         ByteBuf data = Unpooled.buffer(4);
         Payload payload = new Payload(id, modelId, method, metadata, data, kind);
         assertFalse(remotePayloadProcessor.process(payload));
