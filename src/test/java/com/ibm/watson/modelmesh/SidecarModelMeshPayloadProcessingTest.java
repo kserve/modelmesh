@@ -42,7 +42,7 @@ public class SidecarModelMeshPayloadProcessingTest extends SingleInstanceModelMe
 
     @BeforeEach
     public void initialize() throws Exception {
-        System.setProperty(ModelMeshEnvVars.MM_PAYLOAD_PROCESSORS, "logger://*");
+        System.setProperty(ModelMeshEnvVars.MM_PAYLOAD_PROCESSORS, "http://localhost:8080/consumer/kserve/v2");
         super.initialize();
     }
 
