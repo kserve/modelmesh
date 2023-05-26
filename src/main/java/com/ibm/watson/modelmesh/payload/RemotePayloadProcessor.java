@@ -27,7 +27,6 @@ import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.Metadata;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.base64.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,9 +71,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
             for (String key : metadata.keys()) {
                 if (key.endsWith("-bin")) {
                     byte[] bytes = metadata.get(Metadata.Key.of(key, Metadata.BINARY_BYTE_MARSHALLER));
-                    if (bytes != null) {
-                        metadataMap.put(key, Base64.getEncoder().encodeToString(bytes));
-                    }
+                    metadataMap.put(key, java.util.Base64.getEncoder().encodeToString(bytes));
                 } else {
                     String value = metadata.get(Metadata.Key.of(key, Metadata.ASCII_STRING_MARSHALLER));
                     metadataMap.put(key, value);
