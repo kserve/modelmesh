@@ -73,7 +73,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
                 if (key.endsWith("-bin")) {
                     byte[] bytes = metadata.get(Metadata.Key.of(key, Metadata.BINARY_BYTE_MARSHALLER));
                     if (bytes != null) {
-                        metadataMap.put(key, encodeBinaryToString(Unpooled.wrappedBuffer(bytes)));
+                        metadataMap.put(key, Base64.getEncoder().encodeToString(bytes));
                     }
                 } else {
                     String value = metadata.get(Metadata.Key.of(key, Metadata.ASCII_STRING_MARSHALLER));
