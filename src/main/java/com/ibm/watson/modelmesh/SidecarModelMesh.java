@@ -1098,12 +1098,12 @@ public final class SidecarModelMesh extends ModelMesh implements Iface {
     @SuppressWarnings("unchecked")
     List<ByteBuffer> applyModel(String modelId, List<ByteBuffer> input, Map<String, String> metadata)
             throws TException {
-        return (List<ByteBuffer>) invokeModel(modelId, localMeth, remoteMeth, input, metadata);
+        return (List<ByteBuffer>) invokeModel(modelId, false, localMeth, remoteMeth, input, metadata);
     }
 
     // refcount of provided ByteBuf should not be modified
-    ModelResponse callModel(String modelId, String methodName, Metadata headers, ByteBuf data) throws TException {
-        return (ModelResponse) invokeModel(modelId, directLocalMeth, remoteMeth, methodName, headers, data);
+    ModelResponse callModel(String modelId, Boolean isVModel, String methodName, Metadata headers, ByteBuf data) throws TException {
+        return (ModelResponse) invokeModel(modelId, isVModel, directLocalMeth, remoteMeth, methodName, headers, data);
     }
 
     @Idempotent

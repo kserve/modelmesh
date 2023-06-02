@@ -87,7 +87,6 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.FastThreadLocalThread;
 import org.apache.thrift.TException;
-import org.checkerframework.checker.units.qual.A;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -345,6 +344,10 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
         ThreadContext.addContextEntry(ModelMesh.UNBALANCED_KEY, "true"); // unbalanced
     }
 
+    protected static void setvModelIdLiteLinksContextParam(String vModelId) {
+        ThreadContext.addContextEntry(ModelMesh.VMODELID, vModelId);
+    }
+
     // ----------------- concrete model management methods
 
     @Override
@@ -438,18 +441,19 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
             if (unbalanced) {
                 setUnbalancedLitelinksContextParam();
             }
-            return delegate.callModel(modelId, methodName, headers, data);
+            return delegate.callModel(modelId, isVModel, methodName, headers, data);
         }
         String vModelId = modelId;
         modelId = null;
         boolean first = true;
         while (true) {
             modelId = vmm().resolveVModelId(vModelId, modelId);
+            setvModelIdLiteLinksContextParam(vModelId);
             if (unbalanced) {
                 setUnbalancedLitelinksContextParam();
             }
             try {
-                return delegate.callModel(modelId, methodName, headers, data);
+                return delegate.callModel(modelId, true, methodName, headers, data);
             } catch (ModelNotFoundException mnfe) {
                 if (!first) throw mnfe;
             } catch (Exception e) {
@@ -787,12 +791,25 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     call.close(status, emptyMeta());
                     Metrics metrics = delegate.metrics;
                     if (metrics.isEnabled()) {
-                        if (isVModel) {
-                            metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
-                                    status.getCode(), reqSize, respSize, "", Iterables.toString(modelIds));
-                        } else {
-                            metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
-                                    status.getCode(), reqSize, respSize, Iterables.toString(modelIds), "");
+                        Iterator<String> midIt = modelIds.iterator();
+                        while (midIt.hasNext()) {
+                            if (isVModel) {
+                                String mId = null;
+                                String vmId = midIt.next();
+                                try {
+                                    mId = vmm().resolveVModelId(midIt.next(), mId);
+                                    metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
+                                    status.getCode(), reqSize, respSize, mId, vmId);
+                                }
+                                catch (Exception e) {
+                                    logger.error("Could not resolve model id for vModelId" + vmId, e);
+                                    metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
+                                    status.getCode(), reqSize, respSize, "", vmId);
+                                }
+                            } else {
+                                metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
+                                    status.getCode(), reqSize, respSize, midIt.next(), "");
+                            }
                         }
                     }
                 }

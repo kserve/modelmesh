@@ -36,7 +36,6 @@ import io.prometheus.client.CollectorRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.lang.reflect.Array;
 import java.net.SocketAddress;
 import java.nio.channels.DatagramChannel;
 import java.util.Collections;
@@ -238,13 +237,13 @@ interface Metrics extends AutoCloseable {
 
                 if (m == API_REQUEST_TIME || m == API_REQUEST_COUNT || m == INVOKE_MODEL_TIME
                         || m == INVOKE_MODEL_COUNT || m == REQUEST_PAYLOAD_SIZE || m == RESPONSE_PAYLOAD_SIZE) {
-                    if (this.enablePerModelMetrics && m.type != COUNTER_WITH_HISTO) {
-                        builder.labelNames("method", "code", "modelId");
+                    if (this.enablePerModelMetrics) {
+                        builder.labelNames("method", "code", "modelId", "vModelId");
                     } else {
                         builder.labelNames("method", "code");
                     }
                 } else if (this.enablePerModelMetrics && m.type != GAUGE && m.type != COUNTER && m.type != COUNTER_WITH_HISTO) {
-                    builder.labelNames("modelId");
+                    builder.labelNames("modelId", "vModelId");
                 }
                 Collector collector = builder.name(m.promName).help(m.description).create();
                 metricsMap.put(m, collector);
@@ -369,8 +368,8 @@ interface Metrics extends AutoCloseable {
 
         @Override
         public void logTimingMetricDuration(Metric metric, long elapsed, boolean isNano, String modelId) {
-            if (enablePerModelMetrics) {
-                ((Histogram) metricsMap.get(metric)).labels(modelId).observe(isNano ? elapsed / M : elapsed);
+            if (enablePerModelMetrics && modelId != null) {
+                ((Histogram) metricsMap.get(metric)).labels(modelId, "").observe(isNano ? elapsed / M : elapsed);
             } else {
                 ((Histogram) metricsMap.get(metric)).observe(isNano ? elapsed / M : elapsed);
             }
@@ -379,7 +378,7 @@ interface Metrics extends AutoCloseable {
         @Override
         public void logSizeEventMetric(Metric metric, long value, String modelId) {
             if (enablePerModelMetrics) {
-                ((Histogram) metricsMap.get(metric)).labels(modelId).observe(value * metric.newMultiplier);
+                ((Histogram) metricsMap.get(metric)).labels(modelId, "").observe(value * metric.newMultiplier);
             } else {
                 ((Histogram) metricsMap.get(metric)).observe(value * metric.newMultiplier);
             }
@@ -403,18 +402,25 @@ interface Metrics extends AutoCloseable {
             final long elapsedMillis = elapsedNanos / M;
             final Histogram timingHisto = (Histogram) metricsMap
                     .get(external ? API_REQUEST_TIME : INVOKE_MODEL_TIME);
-            String mId = vModelId == null ? modelId : vModelId;
             int idx = shortNames ? name.indexOf('/') : -1;
             String methodName = idx == -1 ? name : name.substring(idx + 1);
+            if (modelId == null) {
+                logger.error("invalid ModelId. Label value for ModelId will be left blank");
+                modelId = "";
+            }
+            if (vModelId == null) {
+                logger.debug("vModelId is empty, creating empty label");
+                vModelId = "";
+            } 
             if (enablePerModelMetrics) {
-                timingHisto.labels(methodName, code.name(), mId).observe(elapsedMillis);
+                timingHisto.labels(methodName, code.name(), modelId, vModelId).observe(elapsedMillis);
             } else {
                 timingHisto.labels(methodName, code.name()).observe(elapsedMillis);
             }
             if (reqPayloadSize != -1) {
                 if (enablePerModelMetrics) {
                     ((Histogram) metricsMap.get(REQUEST_PAYLOAD_SIZE))
-                            .labels(methodName, code.name(), mId).observe(reqPayloadSize);
+                            .labels(methodName, code.name(), modelId, vModelId).observe(reqPayloadSize);
                 } else {
                     ((Histogram) metricsMap.get(REQUEST_PAYLOAD_SIZE))
                             .labels(methodName, code.name()).observe(reqPayloadSize);
@@ -423,7 +429,7 @@ interface Metrics extends AutoCloseable {
             if (respPayloadSize != -1) {
                 if (enablePerModelMetrics) {
                     ((Histogram) metricsMap.get(RESPONSE_PAYLOAD_SIZE))
-                            .labels(methodName, code.name(), mId).observe(respPayloadSize);
+                            .labels(methodName, code.name(), modelId, vModelId).observe(respPayloadSize);
                 } else {
                     ((Histogram) metricsMap.get(RESPONSE_PAYLOAD_SIZE))
                             .labels(methodName, code.name()).observe(respPayloadSize);
