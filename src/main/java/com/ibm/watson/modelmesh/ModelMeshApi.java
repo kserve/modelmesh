@@ -807,8 +807,8 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                 Payload payload = null;
                 try {
                     assert payloadProcessor != null;
-                    if (!takeOwnership && data != null) {
-                        ReferenceCountUtil.release(data);
+                    if (!takeOwnership) {
+                        ReferenceCountUtil.retain(data);
                     }
                     payload = new Payload(payloadId, modelId, methodName, metadata, data, status);
                     if (payloadProcessor.process(payload)) {
