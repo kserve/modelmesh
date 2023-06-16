@@ -768,6 +768,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         evictMethodDescriptor(methodName);
                     }
                 } finally {
+                    final boolean releaseResponse = status != OK;
                     if (payloadProcessor != null) {
                         ByteBuf data = null;
                         Metadata metadata = null;
@@ -775,7 +776,9 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                             data = response.data.readerIndex(respReaderIndex);
                             metadata = response.metadata;
                         }
-                        processPayload(data, requestId, modelId, methodName, metadata, status, false);
+                        processPayload(data, requestId, modelId, methodName, metadata, status, releaseResponse);
+                    } else if (releaseResponse && response != null) {
+                        response.release();
                     }
                     ReleaseAfterResponse.releaseAll();
                     clearThreadLocals();
@@ -805,7 +808,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                 try {
                     assert payloadProcessor != null;
                     if (!takeOwnership) {
-                        data.retain();
+                        ReferenceCountUtil.retain(data);
                     }
                     payload = new Payload(payloadId, modelId, methodName, metadata, data, status);
                     if (payloadProcessor.process(payload)) {
