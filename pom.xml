@@ -58,13 +58,13 @@
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
     <grpc-version>1.54.1</grpc-version>
-    <netty-version>4.1.92.Final</netty-version>
+    <netty-version>4.1.94.Final</netty-version>
     <litelinks-version>1.7.2</litelinks-version>
     <kv-utils-version>0.5.1</kv-utils-version>
     <etcd-java-version>0.0.22</etcd-java-version>
     <protobuf-version>3.23.0</protobuf-version>
     <annotation-version>9.0.75</annotation-version>
-    <guava-version>31.1-jre</guava-version>
+    <guava-version>32.0.1-jre</guava-version>
     <jackson-databind-version>2.15.0</jackson-databind-version>
     <gson-version>2.10.1</gson-version>
     <thrift-version>0.18.1</thrift-version>
