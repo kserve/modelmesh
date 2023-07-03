@@ -4430,7 +4430,16 @@ public abstract class ModelMesh extends ThriftService
             ce.upgradePriority(now + 3600_000L, now + 7200_000L); // (2 hours in future)
         }
         Map<String, String> contextMap = ThreadContext.getCurrentContext();
-        String vModelId = contextMap.getOrDefault(VMODELID, "");
+        String vModelId = null; 
+        // We might arrive here from a path where the original call was with a modelid. 
+        // Hence, it is possible to arrive here with a null contextMap because the vModelId was never set
+        // To avoid catching a null pointer exception we just sanity check instead. 
+        if (contextMap == null) {
+            vModelId = "";
+        } else {
+            vModelId = contextMap.get(VMODELID);
+        }
+                
         // The future-waiting timeouts should not be needed, request threads are interrupted when their
         // timeouts/deadlines expire, and the model loading thread that it waits for has its own timeout.
         // But we still set a large one as a safeguard (there can be pathalogical cases where model-loading
