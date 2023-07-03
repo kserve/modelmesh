@@ -404,12 +404,7 @@ interface Metrics extends AutoCloseable {
                     .get(external ? API_REQUEST_TIME : INVOKE_MODEL_TIME);
             int idx = shortNames ? name.indexOf('/') : -1;
             String methodName = idx == -1 ? name : name.substring(idx + 1);
-            if (modelId == null) {
-                logger.error("invalid ModelId. Label value for ModelId will be left blank");
-                modelId = "";
-            }
-            if (vModelId == null) {
-                logger.debug("vModelId is empty, creating empty label");
+            if (enablePerModelMetrics && vModelId == null) {
                 vModelId = "";
             } 
             if (enablePerModelMetrics) {

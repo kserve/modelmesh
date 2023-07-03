@@ -190,19 +190,19 @@ public class ModelMeshMetricsTest extends AbstractModelMeshClusterTest {
         assertEquals(40.0, metrics.get("modelmesh_api_request_milliseconds_bucket{method=\"predict\",code=\"OK\",modelId=\"myModel\",vModelId=\"\",le=\"2000.0\",}"));
         // External response time should all be < 200ms (includes cache hit loading time)
         assertEquals(40.0,
-                metrics.get("modelmesh_invoke_model_milliseconds_bucket{method=\"predict\",code=\"OK\",modelId=\"myModel\",vmodelId=\"\",le=\"120000.0\",}"));
+                metrics.get("modelmesh_invoke_model_milliseconds_bucket{method=\"predict\",code=\"OK\",modelId=\"myModel\",vModelId=\"\",le=\"120000.0\",}"));
         // Simulated model sizing time is < 200ms
-        assertEquals(1.0, metrics.get("modelmesh_model_sizing_milliseconds_bucket{modelId=\"myModel\",vmodelId=\"\",le=\"60000.0\",}"));
+        assertEquals(1.0, metrics.get("modelmesh_model_sizing_milliseconds_bucket{modelId=\"myModel\",vModelId=\"\",le=\"60000.0\",}"));
         // Simulated model sizing time is > 50ms
-        assertEquals(0.0, metrics.get("modelmesh_model_sizing_milliseconds_bucket{modelId=\"myModel\",vmodelId=\"\",le=\"50.0\",}"));
+        assertEquals(0.0, metrics.get("modelmesh_model_sizing_milliseconds_bucket{modelId=\"myModel\",vModelId=\"\",le=\"50.0\",}"));
         // Simulated model size is between 64MiB and 256MiB
-        assertEquals(0.0, metrics.get("modelmesh_loaded_model_size_bytes_bucket{modelId=\"myModel\",vmodelId=\"\",le=\"6.7108864E7\",}"));
-        assertEquals(1.0, metrics.get("modelmesh_loaded_model_size_bytes_bucket{modelId=\"myModel\",vmodelId=\"\",le=\"2.68435456E8\",}"));
+        assertEquals(0.0, metrics.get("modelmesh_loaded_model_size_bytes_bucket{modelId=\"myModel\",vModelId=\"\",le=\"6.7108864E7\",}"));
+        assertEquals(1.0, metrics.get("modelmesh_loaded_model_size_bytes_bucket{modelId=\"myModel\",vModelId=\"\",le=\"2.68435456E8\",}"));
         // One model is loaded
         assertEquals(1.0, metrics.get("modelmesh_instance_models_total"));
         // Histogram counts should reflect the two payload sizes (30 small, 10 large)
-        assertEquals(30.0, metrics.get("modelmesh_request_size_bytes_bucket{method=\"predict\",code=\"OK\",modelId=\"myModel\",vmodelId=\"\",le=\"128.0\",}"));
-        assertEquals(40.0, metrics.get("modelmesh_request_size_bytes_bucket{method=\"predict\",code=\"OK\",modelId=\"myModel\",vmodelId=\"\",le=\"2097152.0\",}"));
+        assertEquals(30.0, metrics.get("modelmesh_request_size_bytes_bucket{method=\"predict\",code=\"OK\",modelId=\"myModel\",vModelId=\"\",le=\"128.0\",}"));
+        assertEquals(40.0, metrics.get("modelmesh_request_size_bytes_bucket{method=\"predict\",code=\"OK\",modelId=\"myModel\",vModelId=\"\",le=\"2097152.0\",}"));
 
         // Memory metrics
         assertTrue(metrics.containsKey("netty_pool_mem_allocated_bytes{area=\"direct\",}"));

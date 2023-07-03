@@ -27,7 +27,6 @@ import com.ibm.watson.kvutils.KVTable;
 import com.ibm.watson.kvutils.KVTable.Helper.TableTxn;
 import com.ibm.watson.kvutils.KVTable.TableView;
 import com.ibm.watson.kvutils.factory.KVUtilsFactory;
-import com.ibm.watson.litelinks.ThreadContext;
 import com.ibm.watson.litelinks.ThreadPoolHelper;
 import com.ibm.watson.modelmesh.GrpcSupport.InterruptingListener;
 import com.ibm.watson.modelmesh.api.ModelInfo;
@@ -43,6 +42,9 @@ import io.grpc.StatusRuntimeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -68,7 +70,7 @@ import static java.lang.System.currentTimeMillis;
 /**
  * This class contains logic related to VModels (virtual or versioned models)
  */
-public final class VModelManager implements AutoCloseable {
+public final class VModelManager implements Closeable {
 
     private static final Logger logger = LoggerFactory.getLogger(VModelManager.class);
 
@@ -124,9 +126,13 @@ public final class VModelManager implements AutoCloseable {
     }
 
     @Override
-    public void close() throws Exception {
-        vModelTable.close();
-        targetScaleupExecutor.shutdown();
+    public void close() {
+        try {
+            vModelTable.close();
+            targetScaleupExecutor.shutdown();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /**

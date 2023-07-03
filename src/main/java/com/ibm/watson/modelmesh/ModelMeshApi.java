@@ -434,26 +434,27 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
     // Returned ModelResponse will be released once the request thread exits so
     // must be retained before transferring.
     // non-private to avoid synthetic method access
-    ModelResponse callModel(String modelId, boolean isVModel, String methodName, String grpcBalancedHeader,
+    ModelResponse callModel(String originalModelId, boolean isVModel, String methodName, String grpcBalancedHeader,
             Metadata headers, ByteBuf data) throws Exception {
         boolean unbalanced = grpcBalancedHeader == null ? UNBALANCED_DEFAULT : !"true".equals(grpcBalancedHeader);
         if (!isVModel) {
             if (unbalanced) {
                 setUnbalancedLitelinksContextParam();
             }
-            return delegate.callModel(modelId, isVModel, methodName, headers, data);
+            return delegate.callModel(originalModelId, methodName, headers, data);
         }
-        String vModelId = modelId;
-        modelId = null;
+        String vModelId = originalModelId;
+        if (delegate.metrics.isEnabled()) {
+            setvModelIdLiteLinksContextParam(originalModelId);
+        }
         boolean first = true;
         while (true) {
-            modelId = vmm().resolveVModelId(vModelId, modelId);
-            setvModelIdLiteLinksContextParam(vModelId);
+            String modelId = vmm().resolveVModelId(vModelId, originalModelId);
             if (unbalanced) {
                 setUnbalancedLitelinksContextParam();
             }
             try {
-                return delegate.callModel(modelId, true, methodName, headers, data);
+                return delegate.callModel(modelId, methodName, headers, data);
             } catch (ModelNotFoundException mnfe) {
                 if (!first) throw mnfe;
             } catch (Exception e) {

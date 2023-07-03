@@ -3348,7 +3348,7 @@ public abstract class ModelMesh extends ThriftService
             List<String> excludeInstances)
             throws ModelNotFoundException, ModelLoadException, ModelNotHereException, InternalException {
         try {
-            return (StatusInfo) invokeModel(modelId, false, null,
+            return (StatusInfo) invokeModel(modelId, null,
                     internalOpRemoteMeth, returnStatus, load, sync, lastUsed, excludeInstances); // <-- "args"
         } catch (ModelNotFoundException | ModelLoadException | ModelNotHereException | InternalException e) {
             throw e;
@@ -3417,7 +3417,7 @@ public abstract class ModelMesh extends ThriftService
      * @throws TException
      */
     @SuppressWarnings("unchecked")
-    protected Object invokeModel(final String modelId, Boolean isVModel, final Method method,
+    protected Object invokeModel(final String modelId, final Method method,
             final Method remoteMeth, final Object... args) throws ModelNotFoundException, ModelNotHereException, ModelLoadException, TException {
 
         //verify parameter values
@@ -3431,10 +3431,7 @@ public abstract class ModelMesh extends ThriftService
         }
 
         final String tasInternal = contextMap.get(TAS_INTERNAL_CXT_KEY);
-        String vModelId = "";
-        if (isVModel) {
-            vModelId = contextMap.get(VMODELID);
-        }
+        String vModelId = contextMap.getOrDefault(VMODELID, "");
         // Set the external request flag if it's not a tasInternal call or if
         // tasInternal == INTERNAL_REQ. The latter is a new ensureLoaded
         // invocation originating from within the cluster.
@@ -3507,7 +3504,7 @@ public abstract class ModelMesh extends ThriftService
                     throw new ModelNotHereException(instanceId, modelId);
                 }
                 try {
-                    return invokeLocalModel(ce, method, args, modelId, isVModel);
+                    return invokeLocalModel(ce, method, args, modelId);
                 } catch (ModelLoadException mle) {
                     mr = registry.get(modelId);
                     if (mr == null || !mr.loadFailedInInstance(instanceId)) {
@@ -3721,7 +3718,7 @@ public abstract class ModelMesh extends ThriftService
                                     localInvokesInFlight.incrementAndGet();
                                 }
                                 try {
-                                    Object result = invokeLocalModel(cacheEntry, method, args, modelId, isVModel);
+                                    Object result = invokeLocalModel(cacheEntry, method, args, modelId);
                                     return method == null && externalReq ? updateWithModelCopyInfo(result, mr) : result;
                                 } finally {
                                     if (!favourSelfForHits) {
@@ -3941,7 +3938,7 @@ public abstract class ModelMesh extends ThriftService
 
                         // invoke model
                         try {
-                            Object result = invokeLocalModel(cacheEntry, method, args, modelId, isVModel);
+                            Object result = invokeLocalModel(cacheEntry, method, args, modelId);
                             return method == null && externalReq ? updateWithModelCopyInfo(result, mr) : result;
                         } catch (ModelNotHereException e) {
                             if (loadTargetFilter != null) loadTargetFilter.remove(instanceId);
@@ -4126,15 +4123,12 @@ public abstract class ModelMesh extends ThriftService
      * instances inside and some out, and a request has been sent from outside the
      * cluster to an instance inside (since it may land on an unintended instance in
      * that case).
-     * @param isVModel TODO
-     * @throws TException TODO
      * @throws ModelNotHereException if the specified destination instance isn't found
      */
     protected Object forwardInvokeModel(String destId, String modelId, Method remoteMeth, Object... args)
             throws TException {
         destinationInstance.set(destId);
         try {
-            //TODO: not sure what is happening here.. do I need to pass vmodelid to the remoteMeth.invoke?
             return remoteMeth.invoke(directClient, ObjectArrays.concat(modelId, args));
         } catch (Exception e) {
             if (e instanceof InvocationTargetException) {
@@ -4410,9 +4404,9 @@ public abstract class ModelMesh extends ThriftService
         return remoteMeth.invoke(client, ObjectArrays.concat(modelId, args));
     }
 
-    protected Object invokeLocalModel(CacheEntry<?> ce, Method method, Object[] args, String modelId, Boolean isVModel)
+    protected Object invokeLocalModel(CacheEntry<?> ce, Method method, Object[] args, String modelId)
             throws InterruptedException, TException {
-        Object result = invokeLocalModel(ce, method, false, args);
+        Object result = invokeLocalModel(ce, method, args);
         // if this is an ensure-loaded request, check-for and trigger a "chained" load if necessary
         if (method == null) {
             triggerChainedLoadIfNecessary(modelId, result, args, ce.getWeight(), null);
@@ -4420,7 +4414,7 @@ public abstract class ModelMesh extends ThriftService
         return result;
     }
 
-    private Object invokeLocalModel(CacheEntry<?> ce, Method method, Boolean isVModel, Object[] args)
+    private Object invokeLocalModel(CacheEntry<?> ce, Method method, Object[] args)
             throws InterruptedException, TException {
 
         if (method == null) {
@@ -4436,10 +4430,7 @@ public abstract class ModelMesh extends ThriftService
             ce.upgradePriority(now + 3600_000L, now + 7200_000L); // (2 hours in future)
         }
         Map<String, String> contextMap = ThreadContext.getCurrentContext();
-        String vModelId = null; 
-        if (isVModel) {
-            vModelId = contextMap.get(VMODELID);
-        }
+        String vModelId = contextMap.getOrDefault(VMODELID, "");
         // The future-waiting timeouts should not be needed, request threads are interrupted when their
         // timeouts/deadlines expire, and the model loading thread that it waits for has its own timeout.
         // But we still set a large one as a safeguard (there can be pathalogical cases where model-loading

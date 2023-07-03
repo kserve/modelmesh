@@ -75,7 +75,7 @@ public class DummyModelMesh extends ModelMesh implements LegacyModelMeshService.
     @Override
     public ByteBuffer applyModel(String modelId, ByteBuffer input, Map<String, String> metadata)
             throws TException {
-        return (ByteBuffer) invokeModel(modelId, false, localMeth, remoteMeth, input, metadata);
+        return (ByteBuffer) invokeModel(modelId, localMeth, remoteMeth, input, metadata);
     }
 
     @Override
