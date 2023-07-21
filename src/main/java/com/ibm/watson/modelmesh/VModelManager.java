@@ -70,7 +70,7 @@ import static java.lang.System.currentTimeMillis;
 /**
  * This class contains logic related to VModels (virtual or versioned models)
  */
-public final class VModelManager implements Closeable {
+public final class VModelManager implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(VModelManager.class);
 
@@ -126,13 +126,9 @@ public final class VModelManager implements Closeable {
     }
 
     @Override
-    public void close() {
-        try {
-            vModelTable.close();
-            targetScaleupExecutor.shutdown();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+    public void close() throws Exception {
+        vModelTable.close();
+        targetScaleupExecutor.shutdown();
     }
 
     /**

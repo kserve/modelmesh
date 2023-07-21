@@ -30,6 +30,7 @@ import com.ibm.watson.litelinks.ThreadPoolHelper;
 import com.ibm.watson.litelinks.server.ReleaseAfterResponse;
 import com.ibm.watson.litelinks.server.ServerRequestThread;
 import com.ibm.watson.modelmesh.DataplaneApiConfig.RpcConfig;
+import com.ibm.watson.modelmesh.GrpcSupport.InterruptingListener;
 import com.ibm.watson.modelmesh.ModelMesh.ExtendedStatusInfo;
 import com.ibm.watson.modelmesh.api.DeleteVModelRequest;
 import com.ibm.watson.modelmesh.api.DeleteVModelResponse;
@@ -68,6 +69,7 @@ import io.grpc.ServerInterceptor;
 import io.grpc.ServerInterceptors;
 import io.grpc.ServerMethodDefinition;
 import io.grpc.ServerServiceDefinition;
+import io.grpc.Status.Code;
 import io.grpc.StatusException;
 import io.grpc.StatusRuntimeException;
 import io.grpc.netty.GrpcSslContexts;
@@ -345,7 +347,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
     }
 
     protected static void setvModelIdLiteLinksContextParam(String vModelId) {
-        ThreadContext.addContextEntry(ModelMesh.VMODELID, vModelId);
+        ThreadContext.addContextEntry(ModelMesh.VMODEL_ID, vModelId);
     }
 
     // ----------------- concrete model management methods
@@ -434,38 +436,39 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
     // Returned ModelResponse will be released once the request thread exits so
     // must be retained before transferring.
     // non-private to avoid synthetic method access
-    ModelResponse callModel(String originalModelId, boolean isVModel, String methodName, String grpcBalancedHeader,
+    ModelResponse callModel(String modelId, String vModelId, String methodName, String grpcBalancedHeader,
             Metadata headers, ByteBuf data) throws Exception {
         boolean unbalanced = grpcBalancedHeader == null ? UNBALANCED_DEFAULT : !"true".equals(grpcBalancedHeader);
-        if (!isVModel) {
+        if (!modelId.isBlank()) {
             if (unbalanced) {
                 setUnbalancedLitelinksContextParam();
             }
-            return delegate.callModel(originalModelId, methodName, headers, data);
-        }
-        String vModelId = originalModelId;
-        if (delegate.metrics.isEnabled()) {
-            setvModelIdLiteLinksContextParam(originalModelId);
-        }
-        boolean first = true;
-        while (true) {
-            String modelId = vmm().resolveVModelId(vModelId, originalModelId);
-            if (unbalanced) {
-                setUnbalancedLitelinksContextParam();
+            return delegate.callModel(modelId, methodName, headers, data);
+        } else if (!vModelId.isBlank()) {
+            boolean first = true;
+            while (true) {
+                String resolvedModelId = vmm().resolveVModelId(vModelId, vModelId);
+                if (unbalanced) {
+                    setUnbalancedLitelinksContextParam();
+                }
+                try {
+                    return delegate.callModel(resolvedModelId, methodName, headers, data);
+                } catch (ModelNotFoundException mnfe) {
+                    if (!first) throw mnfe;
+                } catch (Exception e) {
+                    logger.error("Exception invoking " + methodName + " method of resolved model " + modelId + " of vmodel "
+                                + vModelId + ": " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                    throw e;
+                }
+                // try again
+                first = false;
+                data.readerIndex(0); // rewind buffer
             }
-            try {
-                return delegate.callModel(modelId, methodName, headers, data);
-            } catch (ModelNotFoundException mnfe) {
-                if (!first) throw mnfe;
-            } catch (Exception e) {
-                logger.error("Exception invoking " + methodName + " method of resolved model " + modelId + " of vmodel "
-                             + vModelId + ": " + e.getClass().getSimpleName() + ": " + e.getMessage());
-                throw e;
-            }
-            // try again
-            first = false;
-            data.readerIndex(0); // rewind buffer
+        } else {
+            throw statusException(DATA_LOSS,
+                "no valid modelid or vmodelid found for request");
         }
+        
     }
 
     // -----
@@ -715,7 +718,9 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                 io.grpc.Status status = INTERNAL;
                 String modelId = null;
                 String requestId = null;
+                String resolvedModelId = null;
                 ModelResponse response = null;
+                Boolean isSingleModelRequest = null;
                 try (InterruptingListener cancelListener = newInterruptingListener()) {
                     if (logHeaders != null) {
                         logHeaders.addToMDC(headers); // MDC cleared in finally block
@@ -730,10 +735,20 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         modelId = validateModelId(midIt.next(), isVModel);
                         if (!midIt.hasNext()) {
                             // single model case (most common)
-                            response = callModel(modelId, isVModel, methodName,
+                            isSingleModelRequest = true;
+                            if (isVModel && delegate.metrics.isEnabled()) {
+                                setvModelIdLiteLinksContextParam(modelId);
+                                resolvedModelId = vmm().resolveVModelId(modelId, modelId);
+                                response = callModel("", modelId, methodName,
                                     balancedMetaVal, headers, reqMessage).retain();
+                            } else {
+                                response = callModel(modelId, "", methodName,
+                                    balancedMetaVal, headers, reqMessage).retain();
+                            }
+                            
                         } else {
                             // multi-model case (specialized)
+                            isSingleModelRequest = false;
                             boolean allRequired = "all".equalsIgnoreCase(headers.get(REQUIRED_KEY));
                             List<String> idList = new ArrayList<>();
                             idList.add(modelId);
@@ -792,25 +807,18 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     call.close(status, emptyMeta());
                     Metrics metrics = delegate.metrics;
                     if (metrics.isEnabled()) {
-                        Iterator<String> midIt = modelIds.iterator();
-                        while (midIt.hasNext()) {
+                        if (isSingleModelRequest && metrics.isPerModelMetricsEnabled() && modelId!=null) {
                             if (isVModel) {
-                                String mId = null;
-                                String vmId = midIt.next();
-                                try {
-                                    mId = vmm().resolveVModelId(midIt.next(), mId);
-                                    metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
-                                    status.getCode(), reqSize, respSize, mId, vmId);
-                                }
-                                catch (Exception e) {
-                                    logger.error("Could not resolve model id for vModelId" + vmId, e);
-                                    metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
-                                    status.getCode(), reqSize, respSize, "", vmId);
-                                }
+                                metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
+                                    status.getCode(), reqSize, respSize, resolvedModelId, modelId);
                             } else {
                                 metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
-                                    status.getCode(), reqSize, respSize, midIt.next(), "");
+                                    status.getCode(), reqSize, respSize, modelId, "");
                             }
+                        }
+                        else {
+                             metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
+                                status.getCode(), reqSize, respSize, "", "");
                         }
                     }
                 }
@@ -972,7 +980,10 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                                 logHeaders.addToMDC(headers);
                             }
                             // need to pass slices of the buffers for threadsafety
-                            return callModel(modelId, isVModel, methodName, balancedMetaVal, headers, data.slice());
+                            if (isVModel) {
+                                return callModel("", modelId, methodName, balancedMetaVal, headers, data.slice());
+                            }
+                            return callModel(modelId, "", methodName, balancedMetaVal, headers, data.slice());
                         } catch (ModelNotFoundException mnfe) {
                             logger.warn("model " + modelId + " not found (from supplied list of " + total + ")");
                             if (!requireAll) {

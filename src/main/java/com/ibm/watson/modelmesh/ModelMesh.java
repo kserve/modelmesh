@@ -3315,7 +3315,7 @@ public abstract class ModelMesh extends ThriftService
     static final String KNOWN_SIZE_CXT_KEY = "tas.known_size";
     static final String UNBALANCED_KEY = "mmesh.unbalanced";
     static final String DEST_INST_ID_KEY = "tas.dest_iid";
-    static final String VMODELID = "vmodelid";
+    static final String VMODEL_ID = "vmodelid";
 
     // these are the possible values for the tas.internal context parameter
     // it won't be set on requests from outside of the cluster, and will
@@ -3431,7 +3431,7 @@ public abstract class ModelMesh extends ThriftService
         }
 
         final String tasInternal = contextMap.get(TAS_INTERNAL_CXT_KEY);
-        String vModelId = contextMap.getOrDefault(VMODELID, "");
+        String vModelId = contextMap.getOrDefault(VMODEL_ID, "");
         // Set the external request flag if it's not a tasInternal call or if
         // tasInternal == INTERNAL_REQ. The latter is a new ensureLoaded
         // invocation originating from within the cluster.
@@ -4437,7 +4437,7 @@ public abstract class ModelMesh extends ThriftService
         if (contextMap == null) {
             vModelId = "";
         } else {
-            vModelId = contextMap.get(VMODELID);
+            vModelId = contextMap.get(VMODEL_ID);
         }
                 
         // The future-waiting timeouts should not be needed, request threads are interrupted when their
