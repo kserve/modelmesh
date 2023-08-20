@@ -16,6 +16,7 @@
 
 package com.ibm.watson.modelmesh;
 
+import com.google.common.base.Strings;
 import com.ibm.watson.prometheus.Counter;
 import com.ibm.watson.prometheus.Gauge;
 import com.ibm.watson.prometheus.Histogram;
@@ -54,7 +55,6 @@ import static com.ibm.watson.modelmesh.Metric.*;
 import static com.ibm.watson.modelmesh.Metric.MetricType.*;
 import static com.ibm.watson.modelmesh.ModelMesh.M;
 import static com.ibm.watson.modelmesh.ModelMeshEnvVars.MMESH_CUSTOM_ENV_VAR;
-import static com.ibm.watson.modelmesh.ModelMeshEnvVars.MMESH_METRICS_ENV_VAR;
 import static java.util.concurrent.TimeUnit.*;
 
 /**
@@ -172,7 +172,7 @@ interface Metrics extends AutoCloseable {
             int port = 2112;
             boolean shortNames = true;
             boolean https = true;
-            boolean perModelMetricsEnabled= true;
+            boolean perModelMetricsEnabled = true;
             String memMetrics = "all"; // default to all
             for (Entry<String, String> ent : params.entrySet()) {
                 switch (ent.getKey()) {
@@ -204,7 +204,7 @@ interface Metrics extends AutoCloseable {
                     throw new Exception("Unrecognized metrics config parameter: " + ent.getKey());
                 }
             }
-            this.perModelMetricsEnabled= perModelMetricsEnabled;
+            this.perModelMetricsEnabled = perModelMetricsEnabled;
 
             registry = new CollectorRegistry();
             for (Metric m : Metric.values()) {
@@ -273,6 +273,7 @@ interface Metrics extends AutoCloseable {
 
             this.metricServer = new NettyServer(registry, port, https);
             this.shortNames = shortNames;
+
             logger.info("Will expose " + (https ? "https" : "http") + " Prometheus metrics on port " + port
                         + " using " + (shortNames ? "short" : "fully-qualified") + " method names");
 
@@ -369,19 +370,21 @@ interface Metrics extends AutoCloseable {
 
         @Override
         public void logTimingMetricDuration(Metric metric, long elapsed, boolean isNano, String modelId) {
+            Histogram histogram = (Histogram) metricsMap.get(metric);
             if (perModelMetricsEnabled && modelId != null) {
-                ((Histogram) metricsMap.get(metric)).labels(modelId, "").observe(isNano ? elapsed / M : elapsed);
+                histogram.labels(modelId, "").observe(isNano ? elapsed / M : elapsed);
             } else {
-                ((Histogram) metricsMap.get(metric)).observe(isNano ? elapsed / M : elapsed);
+                histogram.observe(isNano ? elapsed / M : elapsed);
             }
         }
 
         @Override
         public void logSizeEventMetric(Metric metric, long value, String modelId) {
+            Histogram histogram = (Histogram) metricsMap.get(metric);
             if (perModelMetricsEnabled) {
-                ((Histogram) metricsMap.get(metric)).labels(modelId, "").observe(value * metric.newMultiplier);
+                histogram.labels(modelId, "").observe(value * metric.newMultiplier);
             } else {
-                ((Histogram) metricsMap.get(metric)).observe(value * metric.newMultiplier);
+                histogram.observe(value * metric.newMultiplier);
             }
         }
 
@@ -403,10 +406,12 @@ interface Metrics extends AutoCloseable {
             final long elapsedMillis = elapsedNanos / M;
             final Histogram timingHisto = (Histogram) metricsMap
                     .get(external ? API_REQUEST_TIME : INVOKE_MODEL_TIME);
+
             int idx = shortNames ? name.indexOf('/') : -1;
             String methodName = idx == -1 ? name : name.substring(idx + 1);
-            if (perModelMetricsEnabled&& vModelId == null) {
-                vModelId = "";
+            if (perModelMetricsEnabled) {
+                modelId = Strings.nullToEmpty(modelId);
+                vModelId = Strings.nullToEmpty(vModelId);
             } 
             if (perModelMetricsEnabled) {
                 timingHisto.labels(methodName, code.name(), modelId, vModelId).observe(elapsedMillis);
@@ -414,21 +419,19 @@ interface Metrics extends AutoCloseable {
                 timingHisto.labels(methodName, code.name()).observe(elapsedMillis);
             }
             if (reqPayloadSize != -1) {
+                Histogram reqPayloadHisto = (Histogram) metricsMap.get(REQUEST_PAYLOAD_SIZE);
                 if (perModelMetricsEnabled) {
-                    ((Histogram) metricsMap.get(REQUEST_PAYLOAD_SIZE))
-                            .labels(methodName, code.name(), modelId, vModelId).observe(reqPayloadSize);
+                    reqPayloadHisto.labels(methodName, code.name(), modelId, vModelId).observe(reqPayloadSize);
                 } else {
-                    ((Histogram) metricsMap.get(REQUEST_PAYLOAD_SIZE))
-                            .labels(methodName, code.name()).observe(reqPayloadSize);
+                    reqPayloadHisto.labels(methodName, code.name()).observe(reqPayloadSize);
                 }
             }
             if (respPayloadSize != -1) {
+                Histogram respPayloadHisto = (Histogram) metricsMap.get(RESPONSE_PAYLOAD_SIZE);
                 if (perModelMetricsEnabled) {
-                    ((Histogram) metricsMap.get(RESPONSE_PAYLOAD_SIZE))
-                            .labels(methodName, code.name(), modelId, vModelId).observe(respPayloadSize);
+                    respPayloadHisto.labels(methodName, code.name(), modelId, vModelId).observe(respPayloadSize);
                 } else {
-                    ((Histogram) metricsMap.get(RESPONSE_PAYLOAD_SIZE))
-                            .labels(methodName, code.name()).observe(respPayloadSize);
+                    respPayloadHisto.labels(methodName, code.name()).observe(respPayloadSize);
                 }
             }
         }
