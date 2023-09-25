@@ -30,6 +30,7 @@ import com.ibm.watson.litelinks.ThreadPoolHelper;
 import com.ibm.watson.litelinks.server.ReleaseAfterResponse;
 import com.ibm.watson.litelinks.server.ServerRequestThread;
 import com.ibm.watson.modelmesh.DataplaneApiConfig.RpcConfig;
+import com.ibm.watson.modelmesh.GrpcSupport.InterruptingListener;
 import com.ibm.watson.modelmesh.ModelMesh.ExtendedStatusInfo;
 import com.ibm.watson.modelmesh.api.DeleteVModelRequest;
 import com.ibm.watson.modelmesh.api.DeleteVModelResponse;
@@ -68,6 +69,7 @@ import io.grpc.ServerInterceptor;
 import io.grpc.ServerInterceptors;
 import io.grpc.ServerMethodDefinition;
 import io.grpc.ServerServiceDefinition;
+import io.grpc.Status.Code;
 import io.grpc.StatusException;
 import io.grpc.StatusRuntimeException;
 import io.grpc.netty.GrpcSslContexts;
@@ -85,6 +87,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.ssl.ClientAuth;
 import io.netty.handler.ssl.SslContext;
 import io.netty.util.ReferenceCountUtil;
+import io.netty.util.concurrent.FastThreadLocal;
 import io.netty.util.concurrent.FastThreadLocalThread;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
@@ -344,6 +347,10 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
         ThreadContext.addContextEntry(ModelMesh.UNBALANCED_KEY, "true"); // unbalanced
     }
 
+    protected static void setVModelIdLiteLinksContextParam(String vModelId) {
+        ThreadContext.addContextEntry(ModelMesh.VMODEL_ID, vModelId);
+    }
+
     // ----------------- concrete model management methods
 
     @Override
@@ -427,6 +434,9 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
         }
     }
 
+    // Used to pass resolved model id out of callModel() without additional allocation
+    private static final FastThreadLocal<String> resolvedModelId = new FastThreadLocal<>();
+
     // Returned ModelResponse will be released once the request thread exits so
     // must be retained before transferring.
     // non-private to avoid synthetic method access
@@ -441,9 +451,13 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
         }
         String vModelId = modelId;
         modelId = null;
+        if (delegate.metrics.isPerModelMetricsEnabled()) {
+            setVModelIdLiteLinksContextParam(vModelId);
+        }
         boolean first = true;
         while (true) {
             modelId = vmm().resolveVModelId(vModelId, modelId);
+            resolvedModelId.set(modelId);
             if (unbalanced) {
                 setUnbalancedLitelinksContextParam();
             }
@@ -542,7 +556,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
     }
 
     protected static io.grpc.Status toStatus(Exception e) {
-        io.grpc.Status s = null;
+        io.grpc.Status s;
         String msg = e.getMessage();
         if (e instanceof ModelNotFoundException) {
             return MODEL_NOT_FOUND_STATUS;
@@ -655,7 +669,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
 
         call.request(2); // request 2 to force failure if streaming method
 
-        return new Listener<ByteBuf>() {
+        return new Listener<>() {
             ByteBuf reqMessage;
             boolean canInvoke = true;
             Iterable<String> modelIds = mids.modelIds;
@@ -707,7 +721,8 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                 int respReaderIndex = 0;
 
                 io.grpc.Status status = INTERNAL;
-                String modelId = null;
+                String resolvedModelId = null;
+                String vModelId = null;
                 String requestId = null;
                 ModelResponse response = null;
                 try (InterruptingListener cancelListener = newInterruptingListener()) {
@@ -721,16 +736,28 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         String balancedMetaVal = headers.get(BALANCED_META_KEY);
                         Iterator<String> midIt = modelIds.iterator();
                         // guaranteed at least one
-                        modelId = validateModelId(midIt.next(), isVModel);
+                        String modelOrVModelId = validateModelId(midIt.next(), isVModel);
                         if (!midIt.hasNext()) {
                             // single model case (most common)
-                            response = callModel(modelId, isVModel, methodName,
-                                    balancedMetaVal, headers, reqMessage).retain();
+                            if (isVModel) {
+                                ModelMeshApi.resolvedModelId.set(null);
+                            }
+                            try {
+                                response = callModel(modelOrVModelId, isVModel, methodName,
+                                        balancedMetaVal, headers, reqMessage).retain();
+                            } finally {
+                                if (isVModel) {
+                                    vModelId = modelOrVModelId;
+                                    resolvedModelId = ModelMeshApi.resolvedModelId.getIfExists();
+                                } else {
+                                    resolvedModelId = modelOrVModelId;
+                                }
+                            }
                         } else {
                             // multi-model case (specialized)
                             boolean allRequired = "all".equalsIgnoreCase(headers.get(REQUIRED_KEY));
                             List<String> idList = new ArrayList<>();
-                            idList.add(modelId);
+                            idList.add(modelOrVModelId);
                             while (midIt.hasNext()) {
                                 idList.add(validateModelId(midIt.next(), isVModel));
                             }
@@ -740,7 +767,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     } finally {
                         if (payloadProcessor != null) {
                             processPayload(reqMessage.readerIndex(reqReaderIndex),
-                                    requestId, modelId, methodName, headers, null, true);
+                                    requestId, resolvedModelId, methodName, headers, null, true);
                         } else {
                             releaseReqMessage();
                         }
@@ -776,7 +803,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                             data = response.data.readerIndex(respReaderIndex);
                             metadata = response.metadata;
                         }
-                        processPayload(data, requestId, modelId, methodName, metadata, status, releaseResponse);
+                        processPayload(data, requestId, resolvedModelId, methodName, metadata, status, releaseResponse);
                     } else if (releaseResponse && response != null) {
                         response.release();
                     }
@@ -787,7 +814,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     Metrics metrics = delegate.metrics;
                     if (metrics.isEnabled()) {
                         metrics.logRequestMetrics(true, methodName, nanoTime() - startNanos,
-                                status.getCode(), reqSize, respSize);
+                                status.getCode(), reqSize, respSize, resolvedModelId, vModelId);
                     }
                 }
             }
