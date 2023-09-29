@@ -309,11 +309,15 @@ fi
 echo $$ > ${ANCHOR_FILE}
 
 if [ "$MEM_LIMIT_MB" = "" ]; then
-	DOCKER_LIM_FILE="/sys/fs/cgroup/memory/memory.limit_in_bytes"
+	CGROUP_V1_LIM_FILE="/sys/fs/cgroup/memory/memory.limit_in_bytes"
+	CGROUP_V2_LIM_FILE="/sys/fs/cgroup/memory.max"
 
-	if [ -e "${DOCKER_LIM_FILE}" ]; then
-		MEM_LIMIT_MB=$(($(cat ${DOCKER_LIM_FILE})/1024/1024))
-		echo "Using process mem limit of ${MEM_LIMIT_MB}MiB from ${DOCKER_LIM_FILE}"
+	if [ -e "${CGROUP_V1_LIM_FILE}" ]; then
+		MEM_LIMIT_MB=$(($(cat ${CGROUP_V1_LIM_FILE})/1024/1024))
+		echo "Using process mem limit of ${MEM_LIMIT_MB}MiB from ${CGROUP_V1_LIM_FILE}"
+	elif [ -e "${CGROUP_V2_LIM_FILE}" ]; then
+		MEM_LIMIT_MB=$(($(cat ${CGROUP_V2_LIM_FILE})/1024/1024))
+		echo "Using process mem limit of ${MEM_LIMIT_MB}MiB from ${CGROUP_V2_LIM_FILE}"
 	else
     	MEM_LIMIT_MB="1536"
     	echo "No process mem limit provided or found, defaulting to ${MEM_LIMIT_MB}MiB"
