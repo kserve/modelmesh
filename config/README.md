@@ -8,7 +8,7 @@ The `examples` directory contains example Kustomization overlays to demonstrate 
 
 - `custom-example` is an example of an overlay to deploy model-mesh with a custom model-serving runtime image
 - `custom-example-uds` extends `custom-example` to use a unix domain socket for intra-pod communication
-- `type-constraints-example` is an example of a heterogeneous model-mesh deployment comprising two kubernetes Deployments with a single Service. It employs type constraints to control assignments of models to pod subsets based on laebels.
+- `type-constraints-example` is an example of a heterogeneous model-mesh deployment comprising two kubernetes Deployments with a single Service. It employs type constraints to control assignments of models to pod subsets based on labels.
 
 The following patches are provided in `base/patches` and can be selectively included/modified in your custom overlay:
 

@@ -1,12 +1,13 @@
 approvers:
-  - animeshsingh
   - njhill
-  - pvaneck
-reviewers:
-  - animeshsingh
-  - njhill
-  - pvaneck
-  - tedhtchang
-  - Tomcli
-  - chinhuang007
+  - tjohnson31415
   - ckadner
+  - rafvasq
+reviewers:
+  - njhill
+  - tjohnson31415
+  - ckadner
+  - rafvasq
+emeritus_approvers:
+  - animeshsingh  # 2023-04-12
+  - pvaneck       # 2023-04-12

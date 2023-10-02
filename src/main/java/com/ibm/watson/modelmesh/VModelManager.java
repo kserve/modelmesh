@@ -27,7 +27,6 @@ import com.ibm.watson.kvutils.KVTable;
 import com.ibm.watson.kvutils.KVTable.Helper.TableTxn;
 import com.ibm.watson.kvutils.KVTable.TableView;
 import com.ibm.watson.kvutils.factory.KVUtilsFactory;
-import com.ibm.watson.litelinks.ThreadContext;
 import com.ibm.watson.litelinks.ThreadPoolHelper;
 import com.ibm.watson.modelmesh.GrpcSupport.InterruptingListener;
 import com.ibm.watson.modelmesh.api.ModelInfo;

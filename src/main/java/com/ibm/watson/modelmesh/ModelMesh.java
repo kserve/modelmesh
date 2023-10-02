@@ -61,6 +61,12 @@ import com.ibm.watson.modelmesh.ModelRecord.FailureInfo;
 import com.ibm.watson.modelmesh.TypeConstraintManager.ProhibitedTypeSet;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap;
 import com.ibm.watson.modelmesh.clhm.ConcurrentLinkedHashMap.EvictionListenerWithTime;
+import com.ibm.watson.modelmesh.payload.AsyncPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.CompositePayloadProcessor;
+import com.ibm.watson.modelmesh.payload.LoggingPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.MatchingPayloadProcessor;
+import com.ibm.watson.modelmesh.payload.PayloadProcessor;
+import com.ibm.watson.modelmesh.payload.RemotePayloadProcessor;
 import com.ibm.watson.modelmesh.thrift.ApplierException;
 import com.ibm.watson.modelmesh.thrift.BaseModelMeshService;
 import com.ibm.watson.modelmesh.thrift.InternalException;
@@ -101,6 +107,7 @@ import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.nio.channels.ClosedByInterruptException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -418,6 +425,40 @@ public abstract class ModelMesh extends ThriftService
         } catch (NumberFormatException nfe) {
             throw new NumberFormatException(
                     PRESTOP_SERVER_PORT_ENV_VAR + " is not a valid port number: " + preStopPort);
+        }
+    }
+
+    private PayloadProcessor initPayloadProcessor() {
+        String payloadProcessorsDefinitions = getStringParameter(MM_PAYLOAD_PROCESSORS, null);
+        logger.info("Parsing PayloadProcessor definition '{}'", payloadProcessorsDefinitions);
+        if (payloadProcessorsDefinitions != null && payloadProcessorsDefinitions.length() > 0) {
+            List<PayloadProcessor> payloadProcessors = new ArrayList<>();
+            for (String processorDefinition : payloadProcessorsDefinitions.split(" ")) {
+                try {
+                    URI uri = URI.create(processorDefinition);
+                    String processorName = uri.getScheme();
+                    PayloadProcessor processor = null;
+                    String modelId = uri.getQuery();
+                    String method = uri.getFragment();
+                    if ("http".equals(processorName)) {
+                        processor = new RemotePayloadProcessor(uri);
+                    } else if ("logger".equals(processorName)) {
+                        processor = new LoggingPayloadProcessor();
+                    }
+                    if (processor != null) {
+                        MatchingPayloadProcessor p = MatchingPayloadProcessor.from(modelId, method, processor);
+                        payloadProcessors.add(p);
+                        logger.info("Added PayloadProcessor {}", p.getName());
+                    }
+                } catch (IllegalArgumentException iae) {
+                    logger.error("Unable to parse PayloadProcessor URI definition {}", processorDefinition);
+                }
+            }
+            return new AsyncPayloadProcessor(new CompositePayloadProcessor(payloadProcessors), 1, MINUTES,
+                                             Executors.newScheduledThreadPool(getIntParameter(MM_PAYLOAD_PROCESSORS_THREADS, 2)),
+                                             getIntParameter(MM_PAYLOAD_PROCESSORS_CAPACITY, 64));
+        } else {
+            return null;
         }
     }
 
@@ -854,10 +895,11 @@ public abstract class ModelMesh extends ThriftService
             }
 
             LogRequestHeaders logHeaders = LogRequestHeaders.getConfiguredLogRequestHeaders();
+            PayloadProcessor payloadProcessor = initPayloadProcessor();
 
             grpcServer = new ModelMeshApi((SidecarModelMesh) this, vModelManager, GRPC_PORT, keyCertFile, privateKeyFile,
                     privateKeyPassphrase, clientAuth, caCertFiles, maxGrpcMessageSize, maxGrpcHeadersSize,
-                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders);
+                    maxGrpcConnectionAge, maxGrpcConnectionAgeGrace, logHeaders, payloadProcessor);
         }
 
         if (grpcServer != null) {
@@ -883,7 +925,9 @@ public abstract class ModelMesh extends ThriftService
 //    }
 
     // "type" or "type:p1=v1;p2=v2;...;pn=vn"
-    private static final Pattern METRICS_CONFIG_PATT = Pattern.compile("([a-z]+)(:\\w+=[^;]+(?:;\\w+=[^;]+)*)?");
+    private static final Pattern METRICS_CONFIG_PATT = Pattern.compile("([a-z;]+)(:\\w+=[^;]+(?:;\\w+=[^;]+)*)?");
+    // "metric_name" or "metric:name;l1=v1,l2=v2,...,ln=vn,"
+    private static final Pattern CUSTOM_METRIC_CONFIG_PATT = Pattern.compile("([a-z_:]+);(\\w+=[^;]+(?:;\\w+=[^,]+)*)?");
 
     private static Metrics setUpMetrics() throws Exception {
         if (System.getenv("MM_METRICS_STATSD_PORT") != null || System.getenv("MM_METRICS_PROMETHEUS_PORT") != null) {
@@ -916,12 +960,38 @@ public abstract class ModelMesh extends ThriftService
                 params.put(kv[0], kv[1]);
             }
         }
+        String infoMetricConfig = getStringParameter(MMESH_CUSTOM_ENV_VAR, null);
+        Map<String, String> infoMetricParams;
+        if (infoMetricConfig == null) {
+            logger.info("{} returned null", MMESH_CUSTOM_ENV_VAR);
+            infoMetricParams = null;
+        } else {
+            logger.info("{} set to \"{}\"", MMESH_CUSTOM_ENV_VAR, infoMetricConfig);
+            Matcher infoMetricMatcher = CUSTOM_METRIC_CONFIG_PATT.matcher(infoMetricConfig);
+            if (!infoMetricMatcher.matches()) {
+                throw new Exception("Invalid metrics configuration provided in env var " + MMESH_CUSTOM_ENV_VAR + ": \""
+                                    + infoMetricConfig + "\"");
+            }
+            String infoMetricName = infoMetricMatcher.group(1);
+            String infoMetricParamString = infoMetricMatcher.group(2);
+            infoMetricParams = new HashMap<>();
+            infoMetricParams.put("metric_name", infoMetricName);
+            for (String infoMetricParam : infoMetricParamString.substring(0).split(",")) {
+                String[] kv = infoMetricParam.split("=");
+                String value = System.getenv(kv[1]);
+                if (value == null) {
+                    throw new Exception("Env var " + kv[1] + " is unresolved in " + MMESH_CUSTOM_ENV_VAR + ": \""
+                            + infoMetricConfig + "\"");
+                }
+                infoMetricParams.put(kv[0], value);
+            }
+        }
         try {
             switch (type.toLowerCase()) {
             case "statsd":
                 return new Metrics.StatsDMetrics(params);
             case "prometheus":
-                return new Metrics.PrometheusMetrics(params);
+                return new Metrics.PrometheusMetrics(params, infoMetricParams);
             case "disabled":
                 logger.info("Metrics publishing is disabled (env var {}={})", MMESH_METRICS_ENV_VAR, metricsConfig);
                 return Metrics.NO_OP_METRICS;
@@ -1896,7 +1966,7 @@ public abstract class ModelMesh extends ThriftService
                     // "unload" event if explicit unloading isn't enabled.
                     // Otherwise, this gets recorded in a callback set in the
                     // CacheEntry.unload(int) method
-                    metrics.logTimingMetricDuration(Metric.UNLOAD_MODEL_TIME, 0L, false);
+                    metrics.logTimingMetricDuration(Metric.UNLOAD_MODEL_TIME, 0L, false, modelId);
                     metrics.logCounterMetric(Metric.UNLOAD_MODEL);
                 }
             }
@@ -1967,7 +2037,7 @@ public abstract class ModelMesh extends ThriftService
                         //TODO probably only log if took longer than a certain time
                         long tookMillis = msSince(beforeNanos);
                         logger.info("Unload of " + modelId + " completed in " + tookMillis + "ms");
-                        metrics.logTimingMetricDuration(Metric.UNLOAD_MODEL_TIME, tookMillis, false);
+                        metrics.logTimingMetricDuration(Metric.UNLOAD_MODEL_TIME, tookMillis, false, modelId);
                         metrics.logCounterMetric(Metric.UNLOAD_MODEL);
                     }
                     // else considered trivially succeeded because the corresponding
@@ -2088,7 +2158,7 @@ public abstract class ModelMesh extends ThriftService
                     long queueStartTimeNanos = getAndResetLoadingQueueStartTimeNanos();
                     if (queueStartTimeNanos > 0) {
                         long queueDelayMillis = (nanoTime() - queueStartTimeNanos) / M;
-                        metrics.logSizeEventMetric(Metric.LOAD_MODEL_QUEUE_DELAY, queueDelayMillis);
+                        metrics.logSizeEventMetric(Metric.LOAD_MODEL_QUEUE_DELAY, queueDelayMillis, modelId);
                         // Only log if the priority value is "in the future" which indicates
                         // that there is or were runtime requests waiting for this load.
                         // Otherwise we don't care about arbitrary delays here
@@ -2158,7 +2228,7 @@ public abstract class ModelMesh extends ThriftService
                         loadingTimeStats(modelType).recordTime(tookMillis);
                         logger.info("Load of model " + modelId + " type=" + modelType + " completed in " + tookMillis
                                     + "ms");
-                        metrics.logTimingMetricDuration(Metric.LOAD_MODEL_TIME, tookMillis, false);
+                        metrics.logTimingMetricDuration(Metric.LOAD_MODEL_TIME, tookMillis, false, modelId);
                         metrics.logCounterMetric(Metric.LOAD_MODEL);
                     } catch (Throwable t) {
                         loadFuture = null;
@@ -2318,7 +2388,7 @@ public abstract class ModelMesh extends ThriftService
                     if (size > 0) {
                         long sizeBytes = size * UNIT_SIZE;
                         logger.info("Model " + modelId + " size = " + size + " units" + ", ~" + mb(sizeBytes));
-                        metrics.logSizeEventMetric(Metric.LOADED_MODEL_SIZE, sizeBytes);
+                        metrics.logSizeEventMetric(Metric.LOADED_MODEL_SIZE, sizeBytes, modelId);
                     } else {
                         try {
                             long before = nanoTime();
@@ -2327,9 +2397,9 @@ public abstract class ModelMesh extends ThriftService
                                 long took = msSince(before), sizeBytes = size * UNIT_SIZE;
                                 logger.info("Model " + modelId + " size = " + size + " units" + ", ~" + mb(sizeBytes)
                                             + " sizing took " + took + "ms");
-                                metrics.logTimingMetricDuration(Metric.MODEL_SIZING_TIME, took, false);
+                                metrics.logTimingMetricDuration(Metric.MODEL_SIZING_TIME, took, false, modelId);
                                 // this is actually a size (bytes), not a "time"
-                                metrics.logSizeEventMetric(Metric.LOADED_MODEL_SIZE, sizeBytes);
+                                metrics.logSizeEventMetric(Metric.LOADED_MODEL_SIZE, sizeBytes, modelId);
                             }
                         } catch (Exception e) {
                             if (!isInterruption(e) && state == SIZING) {
@@ -2652,7 +2722,7 @@ public abstract class ModelMesh extends ThriftService
                         //noinspection ThrowFromFinallyBlock
                         throw new ModelNotHereException(instanceId, modelId);
                     }
-                    metrics.logTimingMetricDuration(Metric.QUEUE_DELAY, tookMillis, false);
+                    metrics.logTimingMetricDuration(Metric.QUEUE_DELAY, tookMillis, false, modelId);
                 }
             }
         }
@@ -2831,7 +2901,7 @@ public abstract class ModelMesh extends ThriftService
                 logger.info("Evicted " + (failed ? "failed model record" : "model") + " " + key
                     + " from local cache, last used " + readableTime(millisSinceLastUsed) + " ago (" + lastUsed
                     + "ms), invoked " + ce.getTotalInvocationCount() + " times");
-                metrics.logTimingMetricDuration(Metric.AGE_AT_EVICTION, millisSinceLastUsed, false);
+                metrics.logTimingMetricDuration(Metric.AGE_AT_EVICTION, millisSinceLastUsed, false, ce.modelId);
                 metrics.logCounterMetric(Metric.EVICT_MODEL);
             }
 
@@ -3245,6 +3315,7 @@ public abstract class ModelMesh extends ThriftService
     static final String KNOWN_SIZE_CXT_KEY = "tas.known_size";
     static final String UNBALANCED_KEY = "mmesh.unbalanced";
     static final String DEST_INST_ID_KEY = "tas.dest_iid";
+    static final String VMODEL_ID = "vmodelid";
 
     // these are the possible values for the tas.internal context parameter
     // it won't be set on requests from outside of the cluster, and will
@@ -3360,6 +3431,7 @@ public abstract class ModelMesh extends ThriftService
         }
 
         final String tasInternal = contextMap.get(TAS_INTERNAL_CXT_KEY);
+        final String vModelId = contextMap.getOrDefault(VMODEL_ID, "");
         // Set the external request flag if it's not a tasInternal call or if
         // tasInternal == INTERNAL_REQ. The latter is a new ensureLoaded
         // invocation originating from within the cluster.
@@ -3432,7 +3504,7 @@ public abstract class ModelMesh extends ThriftService
                     throw new ModelNotHereException(instanceId, modelId);
                 }
                 try {
-                    return invokeLocalModel(ce, method, args, modelId);
+                    return invokeLocalModel(ce, method, args, vModelId);
                 } catch (ModelLoadException mle) {
                     mr = registry.get(modelId);
                     if (mr == null || !mr.loadFailedInInstance(instanceId)) {
@@ -3646,7 +3718,7 @@ public abstract class ModelMesh extends ThriftService
                                     localInvokesInFlight.incrementAndGet();
                                 }
                                 try {
-                                    Object result = invokeLocalModel(cacheEntry, method, args, modelId);
+                                    Object result = invokeLocalModel(cacheEntry, method, args, vModelId);
                                     return method == null && externalReq ? updateWithModelCopyInfo(result, mr) : result;
                                 } finally {
                                     if (!favourSelfForHits) {
@@ -3866,7 +3938,7 @@ public abstract class ModelMesh extends ThriftService
 
                         // invoke model
                         try {
-                            Object result = invokeLocalModel(cacheEntry, method, args, modelId);
+                            Object result = invokeLocalModel(cacheEntry, method, args, vModelId);
                             return method == null && externalReq ? updateWithModelCopyInfo(result, mr) : result;
                         } catch (ModelNotHereException e) {
                             if (loadTargetFilter != null) loadTargetFilter.remove(instanceId);
@@ -3921,7 +3993,7 @@ public abstract class ModelMesh extends ThriftService
             if (methodStartNanos > 0L && metrics.isEnabled()) {
                 // only logged here in non-grpc (legacy) mode
                 metrics.logRequestMetrics(true, getRequestMethodName(method, args),
-                        nanoTime() - methodStartNanos, metricStatusCode, -1, -1);
+                    nanoTime() - methodStartNanos, metricStatusCode, -1, -1, modelId, vModelId);
             }
             curThread.setName(threadNameBefore);
         }
@@ -4333,17 +4405,17 @@ public abstract class ModelMesh extends ThriftService
         return remoteMeth.invoke(client, ObjectArrays.concat(modelId, args));
     }
 
-    protected Object invokeLocalModel(CacheEntry<?> ce, Method method, Object[] args, String modelId)
+    protected Object invokeLocalModel(CacheEntry<?> ce, Method method, Object[] args, String vModelId)
             throws InterruptedException, TException {
-        Object result = invokeLocalModel(ce, method, args);
+        final Object result = _invokeLocalModel(ce, method, args, vModelId);
         // if this is an ensure-loaded request, check-for and trigger a "chained" load if necessary
         if (method == null) {
-            triggerChainedLoadIfNecessary(modelId, result, args, ce.getWeight(), null);
+            triggerChainedLoadIfNecessary(ce.modelId, result, args, ce.getWeight(), null);
         }
         return result;
     }
 
-    private Object invokeLocalModel(CacheEntry<?> ce, Method method, Object[] args)
+    private Object _invokeLocalModel(CacheEntry<?> ce, Method method, Object[] args, String vModelId)
             throws InterruptedException, TException {
 
         if (method == null) {
@@ -4380,7 +4452,7 @@ public abstract class ModelMesh extends ThriftService
                         long delayMillis = msSince(beforeNanos);
                         logger.info("Cache miss for model invocation, held up " + delayMillis + "ms");
                         metrics.logCounterMetric(Metric.CACHE_MISS);
-                        metrics.logTimingMetricDuration(Metric.CACHE_MISS_DELAY, delayMillis, false);
+                        metrics.logTimingMetricDuration(Metric.CACHE_MISS_DELAY, delayMillis, false, ce.modelId);
                     }
                 }
             } else {
@@ -4458,7 +4530,7 @@ public abstract class ModelMesh extends ThriftService
             ce.afterInvoke(weight, tookNanos);
             if (code != null && metrics.isEnabled()) {
                 metrics.logRequestMetrics(false, getRequestMethodName(method, args),
-                        tookNanos, code, -1, -1);
+                        tookNanos, code, -1, -1, ce.modelId, vModelId);
             }
         }
     }

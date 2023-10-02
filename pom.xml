@@ -57,25 +57,25 @@
     <!--suppress UnresolvedMavenProperty -->
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
-    <grpc-version>1.51.1</grpc-version>
-    <netty-version>4.1.86.Final</netty-version>
+    <grpc-version>1.57.2</grpc-version>
+    <netty-version>4.1.96.Final</netty-version>
     <litelinks-version>1.7.2</litelinks-version>
     <kv-utils-version>0.5.1</kv-utils-version>
     <etcd-java-version>0.0.22</etcd-java-version>
-    <protobuf-version>3.21.12</protobuf-version>
-    <annotation-version>9.0.70</annotation-version>
-    <guava-version>31.1-jre</guava-version>
-    <jackson-databind-version>2.14.1</jackson-databind-version>
-    <gson-version>2.10</gson-version>
-    <thrift-version>0.17.0</thrift-version>
+    <protobuf-version>3.23.0</protobuf-version>
+    <annotation-version>9.0.75</annotation-version>
+    <guava-version>32.1.2-jre</guava-version>
+    <jackson-databind-version>2.15.2</jackson-databind-version>
+    <gson-version>2.10.1</gson-version>
+    <thrift-version>0.18.1</thrift-version>
     <eclipse-collections-version>11.1.0</eclipse-collections-version>
-    <log4j2-version>2.19.0</log4j2-version>
+    <log4j2-version>2.20.0</log4j2-version>
     <slf4j-version>1.7.36</slf4j-version>
     <!-- Care must be taken when updating the prometheus client lib version
          since we have some custom optimized extensions to this -->
     <prometheus-version>0.9.0</prometheus-version>
     <bouncycastle-version>1.70</bouncycastle-version>
-    <junit-version>5.9.1</junit-version>
+    <junit-version>5.9.3</junit-version>
 
     <dockerhome>${project.build.directory}/dockerhome</dockerhome>
     <skipTests>false</skipTests>
@@ -164,6 +164,13 @@
           </argLine>
           <!-- required to workaround issue with openjdk 8u181-b13-2 -->
           <useSystemClassLoader>false</useSystemClassLoader>
+          <environmentVariables>
+            <MM_INFO_METRICS>assistant_deployment_info:relabel;deployment=DEPLOYMENT_NAME,slot=SLOT_NAME,component=COMPONENT_NAME,group=GROUP_NAME</MM_INFO_METRICS>
+            <DEPLOYMENT_NAME>ga-tf-mm</DEPLOYMENT_NAME>
+            <SLOT_NAME>ga</SLOT_NAME>
+            <COMPONENT_NAME>tf-mm</COMPONENT_NAME>
+            <GROUP_NAME>clu</GROUP_NAME>
+          </environmentVariables>
         </configuration>
       </plugin>
 
