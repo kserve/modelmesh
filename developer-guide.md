@@ -2,11 +2,18 @@
 
 ## Prerequisites
 
-You need Java and [Maven](https://maven.apache.org/guides/getting-started/maven-in-five-minutes.html#running-maven-tools).
-On `macOS` you can install them with [Homebrew](https://brew.sh/):
+You need [Java](https://openjdk.org/) and [Maven](https://maven.apache.org/guides/getting-started/maven-in-five-minutes.html#running-maven-tools)
+to build ModelMesh from source and [`etcd`](https://etcd.io/) to run the unit tests.
+To build your custom `modelmesh` container image and deploy it to a ModelMesh Serving installation on a Kubernetes cluster,
+you need the [`docker`](https://docs.docker.com/engine/reference/commandline/cli/) and
+[`kubectl`](https://kubectl.docs.kubernetes.io/references/kubectl/) CLIs. 
+On `macOS` you can install the required CLIs with [Homebrew](https://brew.sh/):
 
 - Java: `brew install java`
 - Maven: `brew install maven`
+- Etcd: `brew install etcd`
+- Docker: `brew install docker`
+- Kubectl: `brew install kubectl`
 
 ## Generating sources
 
@@ -49,7 +56,7 @@ You may also want to increase your Java Heap size to at least 1.5 GB.
 
 ## Testing code changes
 
-Note, before running the test cases, make sure you have `etcd` installed:
+**Note**, before running the test cases, make sure you have `etcd` installed (see #prerequisites):
 
 ```Bash
 $ etcd --version
@@ -58,12 +65,6 @@ etcd Version: 3.5.5
 Git SHA: 19002cfc6
 Go Version: go1.19.1
 Go OS/Arch: darwin/amd64
-```
-
-On `macOS` you can install `etcd` with [Homebrew](https://brew.sh/):
-
-```Bash
-brew install etcd
 ```
 
 You can either run all test suites at once. You can use the `-q` flag to reduce noise:
@@ -97,15 +98,13 @@ mvn test -Dtest=SidecarModelMeshTest,ModelMeshFailureExpiryTest | \
 
 ## Building the container image
 
-Sample build:
+After testing your code changes locally, it's time to build a new `modelmesh` container image. Replace the value of the
+`DOCKER_USER` environment variable to your DockerHub user ID and change the `IMAGE_TAG` to something meaningful.
 
 ```bash
-export DOCKER_USER=$(
-  docker-credential-$(jq -r .credsStore ~/.docker/config.json) list | \
-  jq -r '. | to_entries[] | select(.key | contains("docker.io")) | last(.value)' | head -1
-)
-export IMAGE_TAG="dev" # "v0.10.0", "latest"
+export DOCKER_USER="<your-docker-userid>"
 export IMAGE_NAME="${DOCKER_USER}/modelmesh"
+export IMAGE_TAG="dev"
 export GIT_COMMIT=$(git rev-parse HEAD)
 export BUILD_ID=$(date '+%Y%m%d')-$(git rev-parse HEAD | cut -c -5)
 
@@ -117,13 +116,25 @@ docker build -t ${IMAGE_NAME}:${IMAGE_TAG} \
 docker push ${IMAGE_NAME}:${IMAGE_TAG}
 ```
 
-## Updating the ModelMesh deployment
+## Updating the ModelMesh Serving deployment
 
 In order to test your code changes in an existing ModelMesh deployment, you need to add the
 container image you built earlier to your `model-serving-config` configmap.
 
-If your ModelMesh deployment already has an existing `model-serving-config` ConfigMap,
-save the contents in a local temp file:
+First, check if your ModelMesh Serving deployment already has an existing `model-serving-config` ConfigMap:
+
+```Shell
+kubectl get configmap
+
+NAME                            DATA   AGE
+kube-root-ca.crt                1      4d2h
+model-serving-config            1      4m14s
+model-serving-config-defaults   1      4d2h
+tc-config                       2      4d2h
+```
+
+If the configmap list contains `model-serving-config`, save the contents of your existing configuration
+in a local temp file:
 
 ```Bash
 mkdir -p temp
@@ -133,11 +144,11 @@ kubectl get configmap model-serving-config -o yaml > temp/model-serving-config.y
 And add the `modelMeshImage` property to the `config.yaml` string property in the temp file:
 ```YAML
       modelMeshImage:
-        name: yourdockeruser/modelmesh
+        name: <your-docker-userid>/modelmesh
         tag: dev
 ```
 
-Replace the `yourdockeruser` placeholder with your Docker username/login.
+Replace the `<your-docker-userid>` placeholder with your Docker username/login.
 
 The complete ConfigMap YAML file might look like this:
 ```YAML
@@ -155,7 +166,7 @@ data:
       enabled: false
       gracePeriodSeconds: 5
     modelMeshImage:
-      name: yourdockeruser/modelmesh
+      name: <your-docker-userid>/modelmesh
       tag: dev
 ```
 
@@ -168,7 +179,12 @@ kubectl apply -f temp/model-serving-config.yaml
 If you did not already have a `model-serving-config` ConfigMap on your cluster, you can create one like this:
 
 ```shell
+# export DOCKER_USER="<your-docker-userid>"
+# export IMAGE_NAME="${DOCKER_USER}/modelmesh"
+# export IMAGE_TAG="dev"
+
 kubectl apply -f - <<EOF
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -176,9 +192,22 @@ metadata:
 data:
   config.yaml: |
     modelMeshImage:
-      name: yourdockeruser/modelmesh
-      tag: dev
+      name: ${IMAGE_NAME}
+      tag: ${IMAGE_TAG}
 EOF
 ```
 
-For the changes to take effect, you might have to delete existing `modelmesh-controller` pod.
+The `modelmesh-controller` watches the configmap and responds to updates by automatically restarting the serving runtime
+pods using the newly built `modelmesh` container image.
+
+You can check which container images are used by running the following command:
+
+```Shell
+kubectl get pods -o jsonpath='{range .items[*]}{"\n"}{.metadata.name}{"\t"}{range .spec.containers[*]}{.image}{", "}{end}{end}' | sort | column -ts $'\t' | sed 's/, *$//g'
+
+etcd-78ff7867d5-45svw                            quay.io/coreos/etcd:v3.5.4
+minio-6ddbfc9665-gtf7x                           kserve/modelmesh-minio-examples:latest
+modelmesh-controller-64f5c8d6d6-k6rzc            kserve/modelmesh-controller:latest
+modelmesh-serving-mlserver-1.x-84884c6849-s8dw6  kserve/rest-proxy:latest, seldonio/mlserver:1.3.2, kserve/modelmesh-runtime-adapter:latest, kserve/modelmesh:dev
+modelmesh-serving-mlserver-1.x-84884c6849-xpdw4  kserve/rest-proxy:latest, seldonio/mlserver:1.3.2, kserve/modelmesh-runtime-adapter:latest, kserve/modelmesh:dev
+```
