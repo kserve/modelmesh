@@ -118,8 +118,8 @@ docker push ${IMAGE_NAME}:${IMAGE_TAG}
 
 ## Updating the ModelMesh Serving deployment
 
-In order to test your code changes in an existing ModelMesh deployment, you need to add the
-container image you built earlier to your `model-serving-config` configmap.
+In order to test your code changes in an existing ModelMesh deployment, you need to add the container image you built
+earlier to your `model-serving-config` ConfigMap.
 
 First, check if your ModelMesh Serving deployment already has an existing `model-serving-config` ConfigMap:
 
@@ -133,7 +133,7 @@ model-serving-config-defaults   1      4d2h
 tc-config                       2      4d2h
 ```
 
-If the configmap list contains `model-serving-config`, save the contents of your existing configuration
+If the ConfigMap list contains `model-serving-config`, save the contents of your existing configuration
 in a local temp file:
 
 ```Bash
@@ -141,7 +141,7 @@ mkdir -p temp
 kubectl get configmap model-serving-config -o yaml > temp/model-serving-config.yaml
 ```
 
-And add the `modelMeshImage` property to the `config.yaml` string property in the temp file:
+And add the `modelMeshImage` property to the `config.yaml` string property:
 ```YAML
       modelMeshImage:
         name: <your-docker-userid>/modelmesh
@@ -151,6 +151,7 @@ And add the `modelMeshImage` property to the `config.yaml` string property in th
 Replace the `<your-docker-userid>` placeholder with your Docker username/login.
 
 The complete ConfigMap YAML file might look like this:
+
 ```YAML
 apiVersion: v1
 kind: ConfigMap
@@ -176,6 +177,12 @@ Apply the ConfigMap to your cluster:
 kubectl apply -f temp/model-serving-config.yaml
 ```
 
+If you are comfortable using vi, you can forgo creating a temp file and edit the ConfigMap directly in the terminal:
+
+```Shell
+kubectl edit configmap model-serving-config
+```
+
 If you did not already have a `model-serving-config` ConfigMap on your cluster, you can create one like this:
 
 ```shell
@@ -197,7 +204,7 @@ data:
 EOF
 ```
 
-The `modelmesh-controller` watches the configmap and responds to updates by automatically restarting the serving runtime
+The `modelmesh-controller` watches the ConfigMap and responds to updates by automatically restarting the serving runtime
 pods using the newly built `modelmesh` container image.
 
 You can check which container images are used by running the following command:
