@@ -118,8 +118,8 @@ docker push ${IMAGE_NAME}:${IMAGE_TAG}
 
 ## Updating the ModelMesh Serving deployment
 
-In order to test your code changes in an existing ModelMesh deployment, you need to add the container image you built
-earlier to your `model-serving-config` ConfigMap.
+In order to test the code changes in an existing [ModelMesh Serving](https://github.com/kserve/modelmesh-serving) deployment,
+the newly built container image needs to be added to the `model-serving-config` ConfigMap.
 
 First, check if your ModelMesh Serving deployment already has an existing `model-serving-config` ConfigMap:
 
