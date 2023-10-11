@@ -1,3 +1,5 @@
+[![Build](https://github.com/kserve/modelmesh/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/kserve/modelmesh/actions/workflows/build.yml)
+
 # ModelMesh
 
 The ModelMesh framework is a mature, general-purpose model serving management/routing layer designed for high-scale, high-density and frequently-changing model use cases. It works with existing or custom-built model servers and acts as a distributed LRU cache for serving runtime models.
