@@ -10,8 +10,8 @@ For more information on supported features and design details, see [these charts
 
 ## Get Started
 
-To get started with the ModelMesh framework, check out [this guide](/docs/overview.md).
+To get started with the ModelMesh framework, check out [this overview](/docs/overview.md).
 
 ## Developer guide
 
-Check out the [developer guide](developer-guide.md) to learn about development practices for the project.
+Use the [developer guide](developer-guide.md) to learn about development practices for the project.
