@@ -10,7 +10,7 @@ For more information on supported features and design details, see [these charts
 
 ## Get Started
 
-To get started with the ModelMesh framework, check out [this overview](/docs/overview.md).
+To learn more about and get started with the ModelMesh framework, check out [the documentation](/docs).
 
 ## Developer guide
 
