@@ -766,8 +766,9 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                         }
                     } finally {
                         if (payloadProcessor != null) {
+                            String payloadModelId = vModelId == null ? resolvedModelId : vModelId;
                             processPayload(reqMessage.readerIndex(reqReaderIndex),
-                                    requestId, resolvedModelId, methodName, headers, null, true);
+                                    requestId, payloadModelId, methodName, headers, null, true);
                         } else {
                             releaseReqMessage();
                         }
@@ -803,7 +804,8 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                             data = response.data.readerIndex(respReaderIndex);
                             metadata = response.metadata;
                         }
-                        processPayload(data, requestId, resolvedModelId, methodName, metadata, status, releaseResponse);
+                        String payloadModelId = vModelId == null ? resolvedModelId : vModelId;
+                        processPayload(data, requestId, payloadModelId, methodName, metadata, status, releaseResponse);
                     } else if (releaseResponse && response != null) {
                         response.release();
                     }
