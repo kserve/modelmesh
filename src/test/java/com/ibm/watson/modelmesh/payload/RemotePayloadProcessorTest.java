@@ -42,4 +42,20 @@ class RemotePayloadProcessorTest {
         Payload payload = new Payload(id, modelId, method, metadata, data, kind);
         assertFalse(remotePayloadProcessor.process(payload));
     }
+
+    @Test
+    void testByteBufReaderIndexReset() {
+        ByteBuf byteBuf = Unpooled.wrappedBuffer("{[0, 0.1, 2.3, 4, 5.6]}".getBytes());
+        // mock the payload getting read too early
+        byteBuf.readerIndex(byteBuf.capacity()); // force set reader index to the end of the ByteBuf
+        String encodedString = RemotePayloadProcessor.encodeBinaryToString(byteBuf);
+        assertFalse(encodedString.isEmpty());
+    }
+
+    @Test
+    void testByteBufReaderIndexUntouched() {
+        ByteBuf byteBuf = Unpooled.wrappedBuffer("{[0, 0.1, 2.3, 4, 5.6]}".getBytes());
+        String encodedString = RemotePayloadProcessor.encodeBinaryToString(byteBuf);
+        assertFalse(encodedString.isEmpty());
+    }
 }

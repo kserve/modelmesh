@@ -82,7 +82,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
         return new PayloadContent(id, modelId, data, kind, status, metadataMap);
     }
 
-    private static String encodeBinaryToString(ByteBuf byteBuf) {
+    static String encodeBinaryToString(ByteBuf byteBuf) {
         byteBuf = byteBuf.readerIndex(0);
         ByteBuf encodedBinary = Base64.encode(byteBuf, byteBuf.readerIndex(), byteBuf.readableBytes(), false);
         //TODO custom jackson serialization for this field to avoid round-tripping to string
