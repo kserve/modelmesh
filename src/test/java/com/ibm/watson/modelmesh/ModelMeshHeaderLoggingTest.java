@@ -102,7 +102,8 @@ public class ModelMeshHeaderLoggingTest extends AbstractModelMeshClusterTest {
             // We'll make sure this one *isn't* logged since it wasn't included in the config
             headers.put(unloggedHeader, "my-unlogged-value"); 
 
-            PredictResponse response = MetadataUtils.attachHeaders(useModels, headers).predict(req);
+            PredictResponse response = useModels.withInterceptors(
+                    MetadataUtils.newAttachHeadersInterceptor(headers)).predict(req);
             assertEquals("classification for predict me! by model myModel",
                     response.getResults(0).getCategory());
 

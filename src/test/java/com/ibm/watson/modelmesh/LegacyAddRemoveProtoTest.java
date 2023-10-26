@@ -221,7 +221,7 @@ public class LegacyAddRemoveProtoTest {
             headers.put(MODEL_ID_META_KEY, modelId);
         }
         headers.put(CUST_HEADER_KEY, "custom-value");
-        return MetadataUtils.attachHeaders(stub, headers);
+        return stub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers));
     }
 
     @BeforeEach

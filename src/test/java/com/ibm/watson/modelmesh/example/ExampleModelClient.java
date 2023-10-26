@@ -80,7 +80,7 @@ public class ExampleModelClient {
     public static <T extends AbstractStub<T>> T forModel(T stub, String modelId) {
         Metadata headers = new Metadata();
         headers.put(MODEL_ID_META_KEY, modelId);
-        return MetadataUtils.attachHeaders(stub, headers);
+        return stub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers));
     }
 
 }

@@ -322,6 +322,6 @@ public class VModelsTest extends SingleInstanceModelMeshTest {
     public static <T extends AbstractStub<T>> T forVModel(T stub, String modelId) {
         Metadata headers = new Metadata();
         headers.put(VMODEL_ID_META_KEY, modelId);
-        return MetadataUtils.attachHeaders(stub, headers);
+        return stub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers));
     }
 }
