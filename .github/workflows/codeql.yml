@@ -54,9 +54,6 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Install etcd
-      run: sudo ./.github/install-etcd.sh
-
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v2
