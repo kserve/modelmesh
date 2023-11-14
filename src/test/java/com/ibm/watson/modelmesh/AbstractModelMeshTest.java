@@ -67,7 +67,7 @@ public abstract class AbstractModelMeshTest {
             headers.put(MODEL_ID_META_KEY, modelId);
         }
         headers.put(CUST_HEADER_KEY, "custom-value");
-        return MetadataUtils.attachHeaders(stub, headers);
+        return stub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers));
     }
 
     public static <T extends AbstractStub<T>> T forVModel(T stub, String... vmodelIds) {
@@ -75,7 +75,7 @@ public abstract class AbstractModelMeshTest {
         for (String modelId : vmodelIds) {
             headers.put(VMODEL_ID_META_KEY, modelId);
         }
-        return MetadataUtils.attachHeaders(stub, headers);
+        return stub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers));
     }
 
     // default KV store to test is etcd
