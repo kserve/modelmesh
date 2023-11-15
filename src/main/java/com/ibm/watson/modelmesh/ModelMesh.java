@@ -927,7 +927,7 @@ public abstract class ModelMesh extends ThriftService
     // "type" or "type:p1=v1;p2=v2;...;pn=vn"
     private static final Pattern METRICS_CONFIG_PATT = Pattern.compile("([a-z;]+)(:\\w+=[^;]+(?:;\\w+=[^;]+)*)?");
     // "metric_name" or "metric:name;l1=v1,l2=v2,...,ln=vn,"
-    private static final Pattern CUSTOM_METRIC_CONFIG_PATT = Pattern.compile("([a-z_:]+);(\\w+=[^;]+(?:;\\w+=[^,]+)*)?");
+    private static final Pattern CUSTOM_METRIC_CONFIG_PATT = Pattern.compile("([a-z_:]+);(\\w+=[^;]+(?:;\\w+=[^,]++)*)?");
 
     private static Metrics setUpMetrics() throws Exception {
         if (System.getenv("MM_METRICS_STATSD_PORT") != null || System.getenv("MM_METRICS_PROMETHEUS_PORT") != null) {
