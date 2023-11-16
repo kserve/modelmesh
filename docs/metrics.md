@@ -11,11 +11,13 @@ The `MM_METRICS` env variable can be used to configure or disable how metrics ar
 
 |      	       |                                       Purpose                                                                          	                                        |          Applies to                    	           |              Default               |
 |:------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------------------:|:--------------------------------------------------:|:----------------------------------:|
-| `port`     	 |  Port on which to send or serve metrics                                                                                                                     	   | statsd (UDP push), prometheus (HTTP/HTTPS serve) 	 | 8126 (statsd), 2112 (prometheus) 	 |
-| `fq_names` 	 |  Whether to use fully-qualified method names in request metrics                                                                                             	   | statsd, prometheus                               	 | false                            	 |
-| `legacy`   	 | Whether to publish legacy flavour (non-Sysdig) statsd metrics. Note that the legacy metrics are equivalent but have different names to those in the table below | statsd                                           	 | false                            	 |
-| `scheme`   	 |  Protocol scheme to use for Prometheus metrics, can be http or https                                                                                        	   | prometheus                                       	 | https                            	 |
+| `port`     	 |  Port on which to send or serve metrics                                                                                                                     	   | statsd (UDP push), prometheus (HTTP/HTTPS serve) 	 | `8126` (statsd), `2112` (prometheus)|
+| `fq_names` 	 |  Whether to use fully-qualified method names in request metrics                                                                                             	   | statsd, prometheus                               	 | `false`                          	 |
+| `legacy`   	 | Whether to publish legacy flavour (non-Sysdig) statsd metrics. Note that the legacy metrics are equivalent but have different names to those in the table below | statsd                                           	 | `false`                          	 |
+| `scheme`   	 |  Protocol scheme to use for Prometheus metrics, can be `http` or `https`                                                                                        	   | prometheus                                       	 | `https`                          	 |
+|`per_model_metrics`|Whether to include the `modelId` and `vModelId` labels in applicable published metrics|prometheus|`false` (*)|
 
+(*) In versions of model-mesh between Sep 5 2023 and Nov 16 2023, the default value of per_model_metrics was (unintentionally) `true`.
 
 ### Capturing Prometheus metrics
 
