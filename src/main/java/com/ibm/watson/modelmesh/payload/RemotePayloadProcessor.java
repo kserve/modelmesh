@@ -57,14 +57,10 @@ public class RemotePayloadProcessor implements PayloadProcessor {
     private static PayloadContent prepareContentBody(Payload payload) {
         String id = payload.getId();
         String modelId = payload.getModelId();
+        String vModelId = payload.getVModelId();
         String kind = payload.getKind().toString().toLowerCase();
         ByteBuf byteBuf = payload.getData();
-        String data;
-        if (byteBuf != null) {
-            data = encodeBinaryToString(byteBuf);
-        } else {
-            data = "";
-        }
+        String data = byteBuf != null ? encodeBinaryToString(byteBuf) : "";
         Metadata metadata = payload.getMetadata();
         Map<String, String> metadataMap = new HashMap<>();
         if (metadata != null) {
@@ -79,7 +75,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
             }
         }
         String status = payload.getStatus() != null ? payload.getStatus().getCode().toString() : "";
-        return new PayloadContent(id, modelId, data, kind, status, metadataMap);
+        return new PayloadContent(id, modelId, vModelId, data, kind, status, metadataMap);
     }
 
     private static String encodeBinaryToString(ByteBuf byteBuf) {
@@ -116,15 +112,17 @@ public class RemotePayloadProcessor implements PayloadProcessor {
 
         private final String id;
         private final String modelid;
+        private final String vModelId;
         private final String data;
         private final String kind;
         private final String status;
         private final Map<String, String> metadata;
 
-        private PayloadContent(String id, String modelid, String data, String kind, String status,
-                               Map<String, String> metadata) {
+        private PayloadContent(String id, String modelid, String vModelId, String data, String kind,
+                               String status, Map<String, String> metadata) {
             this.id = id;
             this.modelid = modelid;
+            this.vModelId = vModelId;
             this.data = data;
             this.kind = kind;
             this.status = status;
@@ -141,6 +139,10 @@ public class RemotePayloadProcessor implements PayloadProcessor {
 
         public String getModelid() {
             return modelid;
+        }
+
+        public String getvModelId() {
+            return vModelId;
         }
 
         public String getData() {
@@ -160,6 +162,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
             return "PayloadContent{" +
                     "id='" + id + '\'' +
                     ", modelid='" + modelid + '\'' +
+                    ", vModelId=" + (vModelId != null ? ('\'' + vModelId + '\'') : "null") +
                     ", data='" + data + '\'' +
                     ", kind='" + kind + '\'' +
                     ", status='" + status + '\'' +

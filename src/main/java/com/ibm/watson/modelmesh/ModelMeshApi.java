@@ -767,7 +767,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     } finally {
                         if (payloadProcessor != null) {
                             processPayload(reqMessage.readerIndex(reqReaderIndex),
-                                    requestId, resolvedModelId, methodName, headers, null, true);
+                                    requestId, resolvedModelId, vModelId, methodName, headers, null, true);
                         } else {
                             releaseReqMessage();
                         }
@@ -803,7 +803,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                             data = response.data.readerIndex(respReaderIndex);
                             metadata = response.metadata;
                         }
-                        processPayload(data, requestId, resolvedModelId, methodName, metadata, status, releaseResponse);
+                        processPayload(data, requestId, resolvedModelId, vModelId, methodName, metadata, status, releaseResponse);
                     } else if (releaseResponse && response != null) {
                         response.release();
                     }
@@ -829,7 +829,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
              * @param status null for requests, non-null for responses
              * @param takeOwnership whether the processor should take ownership
              */
-            private void processPayload(ByteBuf data, String payloadId, String modelId, String methodName,
+            private void processPayload(ByteBuf data, String payloadId, String vModelId, String modelId, String methodName,
                                         Metadata metadata, io.grpc.Status status, boolean takeOwnership) {
                 Payload payload = null;
                 try {
@@ -837,7 +837,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     if (!takeOwnership) {
                         ReferenceCountUtil.retain(data);
                     }
-                    payload = new Payload(payloadId, modelId, methodName, metadata, data, status);
+                    payload = new Payload(payloadId, modelId, vModelId, methodName, metadata, data, status);
                     if (payloadProcessor.process(payload)) {
                         data = null; // ownership transferred
                     }
