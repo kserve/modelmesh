@@ -61,11 +61,11 @@
     <netty-version>4.1.100.Final</netty-version>
     <litelinks-version>1.7.2</litelinks-version>
     <kv-utils-version>0.5.1</kv-utils-version>
-    <etcd-java-version>0.0.22</etcd-java-version>
-    <protobuf-version>3.24.4</protobuf-version>
+    <etcd-java-version>0.0.24</etcd-java-version>
+    <protobuf-version>3.25.0</protobuf-version>
     <annotation-version>9.0.82</annotation-version>
     <guava-version>32.1.3-jre</guava-version>
-    <jackson-databind-version>2.15.3</jackson-databind-version>
+    <jackson-databind-version>2.16.0</jackson-databind-version>
     <gson-version>2.10.1</gson-version>
     <thrift-version>0.19.0</thrift-version>
     <eclipse-collections-version>11.1.0</eclipse-collections-version>
@@ -75,7 +75,7 @@
          since we have some custom optimized extensions to this -->
     <prometheus-version>0.9.0</prometheus-version>
     <bouncycastle-version>1.74</bouncycastle-version>
-    <junit-version>5.10.0</junit-version>
+    <junit-version>5.10.1</junit-version>
 
     <dockerhome>${project.build.directory}/dockerhome</dockerhome>
     <skipTests>false</skipTests>
