@@ -172,7 +172,7 @@ interface Metrics extends AutoCloseable {
             int port = 2112;
             boolean shortNames = true;
             boolean https = true;
-            boolean perModelMetricsEnabled = true;
+            boolean perModelMetricsEnabled = false;
             String memMetrics = "all"; // default to all
             for (Entry<String, String> ent : params.entrySet()) {
                 switch (ent.getKey()) {
