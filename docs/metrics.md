@@ -17,7 +17,7 @@ The `MM_METRICS` env variable can be used to configure or disable how metrics ar
 | `scheme`   	 |  Protocol scheme to use for Prometheus metrics, can be `http` or `https`                                                                                        	   | prometheus                                       	 | `https`                          	 |
 |`per_model_metrics`|Whether to include the `modelId` and `vModelId` labels in applicable published metrics|prometheus|`false` (*)|
 
-(*) In versions of model-mesh between Sep 5 2023 and Nov 16 2023, the default value of per_model_metrics was (unintentionally) `true`.
+(*) In versions of ModelMesh between Sep 5 2023 and Nov 16 2023, the default value of `per_model_metrics` was (unintentionally) `true`.
 
 ### Capturing Prometheus metrics
 
