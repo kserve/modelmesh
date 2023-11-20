@@ -74,7 +74,7 @@
     <!-- Care must be taken when updating the prometheus client lib version
          since we have some custom optimized extensions to this -->
     <prometheus-version>0.9.0</prometheus-version>
-    <bouncycastle-version>1.70</bouncycastle-version>
+    <bouncycastle-version>1.74</bouncycastle-version>
     <junit-version>5.10.0</junit-version>
 
     <dockerhome>${project.build.directory}/dockerhome</dockerhome>
@@ -450,7 +450,7 @@
        generate a self-signed server certificate -->
     <dependency>
       <groupId>org.bouncycastle</groupId>
-      <artifactId>bcpkix-jdk15on</artifactId>
+      <artifactId>bcpkix-jdk18on</artifactId>
       <version>${bouncycastle-version}</version>
     </dependency>
 
