@@ -367,9 +367,6 @@ echo "SHUTDOWN_TIMEOUT_MS=$SHUTDOWN_TIMEOUT_MS"
 
 LITELINKS_ARGS="-Dlitelinks.cancel_on_client_close=true -Dlitelinks.threadcontexts=log_mdc -Dlitelinks.shutdown_timeout_ms=${SHUTDOWN_TIMEOUT_MS} -Dlitelinks.produce_pooled_bytebufs=true"
 
-# have litelinks use OpenSSL instead of JDK TLS implementation (faster)
-LL_OPENSSL_ARG="-Dlitelinks.ssl.use_jdk=false"
-
 # These two args are needed to use netty's off-the-books direct buffer allocation
 NETTY_DIRECTBUF_ARGS="-Dio.netty.tryReflectionSetAccessible=true --add-opens=java.base/java.nio=ALL-UNNAMED"
 # this defaults to equal max heap, which can result in container OOMKilled
@@ -414,7 +411,6 @@ exec $JAVA_HOME/bin/java -cp "$LL_JAR:lib/*" -XX:+UnlockExperimentalVMOptions -X
  ${JAVA_MAXDIRECT_ARG} ${NETTY_MAXDIRECT_ARG} ${NETTY_DISABLE_CHECK_ARGS} \
  ${GRPC_USE_SHARED_ALLOC_ARG} \
  ${SSL_PK_ARG} ${TRUSTSTORE_ARG} ${LITELINKS_ARGS} ${CUSTOM_JVM_ARGS} \
- $LL_OPENSSL_ARG \
  $PRIVATE_ENDPOINT_ARG \
  $LOG_CONFIG_ARG $LOG_PERF_ARGS \
  com.ibm.watson.litelinks.server.LitelinksService \
