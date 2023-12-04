@@ -17,6 +17,7 @@
 package com.ibm.watson.modelmesh.payload;
 
 import java.io.IOException;
+import java.util.Objects;
 
 /**
  * A {@link PayloadProcessor} that processes {@link Payload}s only if they match with given model ID or method name.
@@ -29,10 +30,13 @@ public class MatchingPayloadProcessor implements PayloadProcessor {
 
     private final String modelId;
 
-    MatchingPayloadProcessor(PayloadProcessor delegate, String methodName, String modelId) {
+    private final String vModelId;
+
+    MatchingPayloadProcessor(PayloadProcessor delegate, String methodName, String modelId, String vModelId) {
         this.delegate = delegate;
         this.methodName = methodName;
         this.modelId = modelId;
+        this.vModelId = vModelId;
     }
 
     @Override
@@ -42,40 +46,49 @@ public class MatchingPayloadProcessor implements PayloadProcessor {
 
     @Override
     public boolean process(Payload payload) {
-        boolean processed = false;
-        boolean methodMatches = true;
-        if (this.methodName != null) {
-            methodMatches = payload.getMethod() != null && this.methodName.equals(payload.getMethod());
-        }
+        boolean methodMatches = this.methodName == null || Objects.equals(this.methodName, payload.getMethod());
         if (methodMatches) {
-            boolean modelIdMatches = true;
-            if (this.modelId != null) {
-                modelIdMatches = this.modelId.equals(payload.getModelId());
-            }
+            boolean modelIdMatches = this.modelId == null || this.modelId.equals(payload.getModelId());
             if (modelIdMatches) {
-                processed = delegate.process(payload);
+                boolean vModelIdMatches = this.vModelId == null || this.vModelId.equals(payload.getVModelId());
+                if (vModelIdMatches) {
+                    return delegate.process(payload);
+                }
             }
         }
-        return processed;
+        return false;
     }
 
     public static MatchingPayloadProcessor from(String modelId, String method, PayloadProcessor processor) {
+        return from(modelId, null, method, processor);
+    }
+
+    public static MatchingPayloadProcessor from(String modelId, String vModelId,
+                                                String method, PayloadProcessor processor) {
         if (modelId != null) {
-            if (modelId.length() > 0) {
+            if (!modelId.isEmpty()) {
                 modelId = modelId.replaceFirst("/", "");
-                if (modelId.length() == 0 || modelId.equals("*")) {
+                if (modelId.isEmpty() || modelId.equals("*")) {
                     modelId = null;
                 }
             } else {
                 modelId = null;
             }
         }
-        if (method != null) {
-            if (method.length() == 0 || method.equals("*")) {
-                method = null;
+        if (vModelId != null) {
+            if (!vModelId.isEmpty()) {
+                vModelId = vModelId.replaceFirst("/", "");
+                if (vModelId.isEmpty() || vModelId.equals("*")) {
+                    vModelId = null;
+                }
+            } else {
+                vModelId = null;
             }
         }
-        return new MatchingPayloadProcessor(processor, method, modelId);
+        if (method != null && (method.isEmpty() || method.equals("*"))) {
+            method = null;
+        }
+        return new MatchingPayloadProcessor(processor, method, modelId, vModelId);
     }
 
     @Override

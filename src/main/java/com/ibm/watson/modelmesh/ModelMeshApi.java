@@ -768,7 +768,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                     } finally {
                         if (payloadProcessor != null) {
                             processPayload(reqMessage.readerIndex(reqReaderIndex),
-                                    requestId, resolvedModelId, methodName, headers, null);
+                                    requestId, resolvedModelId, vModelId, methodName, headers, null);
                         } else {
                             releaseReqMessage();
                         }
@@ -800,7 +800,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
                 } finally {
                     if (payloadProcessor != null) {
                         Metadata metadata = response != null ? response.metadata : null;
-                        processPayload(responsePayload, requestId, resolvedModelId, methodName, metadata, status);
+                        processPayload(responsePayload, requestId, resolvedModelId, vModelId, methodName, metadata, status);
                     }
                     if (status != OK && response != null) {
                         // An additional release is required if we call.sendMessage() wasn't sucessful
@@ -825,11 +825,12 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
              * @param data the binary data
              * @param payloadId the id of the request
              * @param modelId the id of the model
+             * @param vModelId the id of the vModel
              * @param methodName the name of the invoked method
              * @param metadata the method name metadata
              * @param status null for requests, non-null for responses
              */
-            private void processPayload(ByteBuf data, String payloadId, String modelId, String methodName,
+            private void processPayload(ByteBuf data, String payloadId, String modelId, String vModelId, String methodName,
                                         Metadata metadata, io.grpc.Status status) {
                 Payload payload = null;
                 try {
@@ -1197,6 +1198,7 @@ public final class ModelMeshApi extends ModelMeshGrpc.ModelMeshImplBase
         } finally {
             clearThreadLocals();
         }
+        
     }
 
     @Override

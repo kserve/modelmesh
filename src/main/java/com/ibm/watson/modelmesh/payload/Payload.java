@@ -39,6 +39,8 @@ public class Payload {
 
     private final String modelId;
 
+    private final String vModelId;
+
     private final String method;
 
     private final Metadata metadata;
@@ -48,10 +50,17 @@ public class Payload {
     // null for requests, non-null for responses
     private final Status status;
 
+
     public Payload(@Nonnull String id, @Nonnull String modelId, @Nullable String method, @Nullable Metadata metadata,
                    @Nullable ByteBuf data, @Nullable Status status) {
+        this(id, modelId, null, method, metadata, data, status);
+    }
+
+    public Payload(@Nonnull String id, @Nonnull String modelId, @Nullable String vModelId, @Nullable String method,
+                   @Nullable Metadata metadata, @Nullable ByteBuf data, @Nullable Status status) {
         this.id = id;
         this.modelId = modelId;
+        this.vModelId = vModelId;
         this.method = method;
         this.metadata = metadata;
         this.data = data;
@@ -66,6 +75,16 @@ public class Payload {
     @Nonnull
     public String getModelId() {
         return modelId;
+    }
+
+    @CheckForNull
+    public String getVModelId() {
+        return vModelId;
+    }
+
+    @Nonnull
+    public String getVModelIdOrModelId() {
+        return vModelId != null ? vModelId : modelId;
     }
 
     @CheckForNull
@@ -101,6 +120,7 @@ public class Payload {
     public String toString() {
         return "Payload{" +
                 "id='" + id + '\'' +
+                ", vModelId=" + (vModelId != null ? ('\'' + vModelId + '\'') : "null") +
                 ", modelId='" + modelId + '\'' +
                 ", method='" + method + '\'' +
                 ", status=" + (status == null ? "request" : String.valueOf(status)) +
