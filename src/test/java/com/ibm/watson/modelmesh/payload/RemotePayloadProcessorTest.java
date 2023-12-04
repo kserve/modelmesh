@@ -16,6 +16,7 @@
 
 package com.ibm.watson.modelmesh.payload;
 
+import java.io.IOException;
 import java.net.URI;
 
 import io.grpc.Metadata;
@@ -29,17 +30,36 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 class RemotePayloadProcessorTest {
 
     @Test
-    void testDestinationUnreachable() {
-        RemotePayloadProcessor remotePayloadProcessor = new RemotePayloadProcessor(URI.create("http://this-does-not-exist:123"));
-        String id = "123";
-        String modelId = "456";
-        String method = "predict";
-        Status kind = Status.INVALID_ARGUMENT;
-        Metadata metadata = new Metadata();
-        metadata.put(Metadata.Key.of("foo", Metadata.ASCII_STRING_MARSHALLER), "bar");
-        metadata.put(Metadata.Key.of("binary-bin", Metadata.BINARY_BYTE_MARSHALLER), "string".getBytes());
-        ByteBuf data = Unpooled.buffer(4);
-        Payload payload = new Payload(id, modelId, method, metadata, data, kind);
-        assertFalse(remotePayloadProcessor.process(payload));
+    void testDestinationUnreachable() throws IOException {
+        URI uri = URI.create("http://this-does-not-exist:123");
+        try (RemotePayloadProcessor remotePayloadProcessor = new RemotePayloadProcessor(uri)) {
+            String id = "123";
+            String modelId = "456";
+            String method = "predict";
+            Status kind = Status.INVALID_ARGUMENT;
+            Metadata metadata = new Metadata();
+            metadata.put(Metadata.Key.of("foo", Metadata.ASCII_STRING_MARSHALLER), "bar");
+            metadata.put(Metadata.Key.of("binary-bin", Metadata.BINARY_BYTE_MARSHALLER), "string".getBytes());
+            ByteBuf data = Unpooled.buffer(4);
+            Payload payload = new Payload(id, modelId, method, metadata, data, kind);
+            assertFalse(remotePayloadProcessor.process(payload));
+        }
+    }
+
+    @Test
+    void testDestinationUnreachableHTTPS() throws IOException {
+        URI uri = URI.create("https://this-does-not-exist:123");
+        try (RemotePayloadProcessor remotePayloadProcessor = new RemotePayloadProcessor(uri)) {
+            String id = "123";
+            String modelId = "456";
+            String method = "predict";
+            Status kind = Status.INVALID_ARGUMENT;
+            Metadata metadata = new Metadata();
+            metadata.put(Metadata.Key.of("foo", Metadata.ASCII_STRING_MARSHALLER), "bar");
+            metadata.put(Metadata.Key.of("binary-bin", Metadata.BINARY_BYTE_MARSHALLER), "string".getBytes());
+            ByteBuf data = Unpooled.buffer(4);
+            Payload payload = new Payload(id, modelId, method, metadata, data, kind);
+            assertFalse(remotePayloadProcessor.process(payload));
+        }
     }
 }
