@@ -1309,6 +1309,7 @@ public abstract class ModelMesh extends ThriftService
     @Override
     protected boolean isReady() {
         if (abortStartup) {
+            logger.info("Returning NOT READY to readiness probe due to unexpected model loading failures");
             return false;
         }
         // called only post-initialization
