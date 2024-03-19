@@ -1327,6 +1327,11 @@ public abstract class ModelMesh extends ThriftService
             reportReady = true;
         }
 
+        if (!verifyKvStoreConnection()) {
+            logger.info("Returning NOT READY to readiness probe due to kv-store connection failure");
+            return false;
+        }
+
         return true;
     }
 
