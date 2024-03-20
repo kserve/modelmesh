@@ -77,7 +77,7 @@
     <bouncycastle-version>1.74</bouncycastle-version>
     <junit-version>5.10.1</junit-version>
 
-    <zookeeper-version>3.7.2</zookeeper-version>
+    <zookeeper-version>3.8.4</zookeeper-version>
     <curator-version>5.3.0</curator-version>
 
     <dockerhome>${project.build.directory}/dockerhome</dockerhome>
@@ -532,6 +532,12 @@
         <groupId>org.apache.zookeeper</groupId>
         <artifactId>zookeeper</artifactId>
         <version>${zookeeper-version}</version>
+        <exclusions>
+          <exclusion>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
       <dependency>
         <groupId>org.apache.curator</groupId>
