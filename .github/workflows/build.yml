@@ -83,8 +83,7 @@ jobs:
       - name: Build and push runtime image
         uses: docker/build-push-action@v4
         with:
-          # for linux/s390x, maven errors due to missing io.grpc:protoc-gen-grpc-java:exe:linux-s390_64:1.51.1
-          platforms: linux/amd64,linux/arm64/v8,linux/ppc64le
+          platforms: linux/amd64,linux/arm64/v8,linux/ppc64le,linux/s390x
           target: runtime
           push: ${{ github.event_name == 'push' }}
           tags: ${{ env.IMAGE_NAME }}:${{ env.VERSION }}
