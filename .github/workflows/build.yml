@@ -78,8 +78,7 @@ jobs:
 
           # print env vars for debugging
           cat "$GITHUB_ENV"
-          echo "VERSION=$VERSION"
-
+          
       - name: Build and push runtime image
         uses: docker/build-push-action@v4
         with:
