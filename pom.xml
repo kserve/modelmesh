@@ -74,7 +74,8 @@
     <!-- Care must be taken when updating the prometheus client lib version
          since we have some custom optimized extensions to this -->
     <prometheus-version>0.9.0</prometheus-version>
-    <bouncycastle-version>1.77</bouncycastle-version>
+
+    <bouncycastle-version>1.78</bouncycastle-version>
     <junit-version>5.10.2</junit-version>
 
     <zookeeper-version>3.8.4</zookeeper-version>
