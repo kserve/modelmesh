@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.8 as build_base
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest as build_base
 
 # https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
 # don't provide "default" values (e.g. 'ARG TARGETARCH=amd64') for non-buildx environments,
@@ -76,7 +76,7 @@ RUN --mount=type=cache,target=/root/.m2 \
 
 
 ###############################################################################
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6 AS runtime
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest AS runtime
 
 # TODO: FROM registry.access.redhat.com/ubi8/openjdk-17-runtime:1.15
 
