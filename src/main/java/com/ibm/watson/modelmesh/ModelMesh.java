@@ -100,8 +100,11 @@ import org.eclipse.collections.impl.factory.primitive.ObjectLongMaps;
 import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
 
 import javax.annotation.concurrent.GuardedBy;
+import javax.net.ssl.SSLContext;
 import java.io.File;
+import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.io.UncheckedIOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
@@ -109,6 +112,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.channels.ClosedByInterruptException;
+import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -431,7 +435,7 @@ public abstract class ModelMesh extends ThriftService
     private PayloadProcessor initPayloadProcessor() {
         String payloadProcessorsDefinitions = getStringParameter(MM_PAYLOAD_PROCESSORS, null);
         logger.info("Parsing PayloadProcessor definition '{}'", payloadProcessorsDefinitions);
-        if (payloadProcessorsDefinitions != null && payloadProcessorsDefinitions.length() > 0) {
+        if (payloadProcessorsDefinitions != null && !payloadProcessorsDefinitions.isEmpty()) {
             List<PayloadProcessor> payloadProcessors = new ArrayList<>();
             for (String processorDefinition : payloadProcessorsDefinitions.split(" ")) {
                 try {
@@ -442,6 +446,14 @@ public abstract class ModelMesh extends ThriftService
                     String method = uri.getFragment();
                     if ("http".equals(processorName)) {
                         processor = new RemotePayloadProcessor(uri);
+                    } else if ("https".equals(processorName)) {
+                        SSLContext sslContext;
+                        try {
+                            sslContext = SSLContext.getDefault();
+                        } catch (NoSuchAlgorithmException missingAlgorithmException) {
+                            throw new UncheckedIOException(new IOException(missingAlgorithmException));
+                        }
+                        processor = new RemotePayloadProcessor(uri, sslContext, sslContext.getDefaultSSLParameters());
                     } else if ("logger".equals(processorName)) {
                         processor = new LoggingPayloadProcessor();
                     }
