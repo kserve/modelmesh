@@ -1292,6 +1292,14 @@ public abstract class ModelMesh extends ThriftService
         return le != null && le.isLeader();
     }
 
+    @Override
+    protected boolean isLive() {
+        if (failFastUpgradeEnabled && failLiveOnFailFastEnabled) {
+            return btspSuccessCount != null || !abortStartup;
+        }
+        return true;
+    }
+
     /*
      * We don't begin to return READY until no other members of the same logical
      * model-mesh deployment are in a terminating state. We can still receive
@@ -1332,6 +1340,8 @@ public abstract class ModelMesh extends ThriftService
 
     /* -------------------------- "fail-fast" startup probation period feature -------------------- */
 
+    protected volatile boolean failFastUpgradeEnabled;
+    protected volatile boolean failLiveOnFailFastEnabled;
     protected volatile boolean abortStartup;    // flag used to abort startup in case of unexpected model loading failures
     protected AtomicInteger btspSuccessCount; // count of all succeeded load while bootstrap
     protected AtomicInteger btspFatalCount;   // count of all fatal failures load while bootstrap
@@ -1343,9 +1353,9 @@ public abstract class ModelMesh extends ThriftService
             BOOTSTRAP_CLEARANCE_PERIOD_MS = Long.parseLong(btspClearanceStr);
         }
 
-        boolean failfastUpgradeEnabled = !"false".equalsIgnoreCase(
-                System.getenv(FAILFAST_UPGRADE_ENV_VAR));
-        if (failfastUpgradeEnabled) {
+        failFastUpgradeEnabled = !"false".equalsIgnoreCase(System.getenv(FAILFAST_UPGRADE_ENV_VAR));
+        failLiveOnFailFastEnabled = "true".equalsIgnoreCase(System.getenv(FAIL_LIVE_ON_FAILFAST_ENV_VAR));
+        if (failFastUpgradeEnabled) {
             btspSuccessCount = new AtomicInteger();
             btspFatalCount = new AtomicInteger();
             btspFailureCount = new AtomicInteger();
