@@ -29,7 +29,7 @@ replacements:
       kind: Deployment
       name: model-mesh
     fieldPaths:
-    - spec.template.spec.containers.0.env.0.value
+    - spec.template.spec.containers.0.env.[name=MM_SERVICE_NAME].value
 
 ### Available patches:
 
