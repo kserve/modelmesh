@@ -33,10 +33,10 @@ replacements:
 
 ### Available patches:
 
-#patchesStrategicMerge:
-#  - patches/etcd.yaml
-#  - patches/logger.yaml
-#  - patches/tls.yaml
-#  - patches/uds.yaml
-#  - patches/max_msg_size.yaml
-#  - patches/prometheus_metrics.yaml
+# patches:
+#  - path: patches/etcd.yaml
+#  - path: patches/logger.yaml
+#  - path: patches/tls.yaml
+#  - path: patches/uds.yaml
+#  - path: patches/max_msg_size.yaml
+#  - path: patches/prometheus_metrics.yaml
