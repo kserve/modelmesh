@@ -95,7 +95,7 @@ public class RemotePayloadProcessor implements PayloadProcessor {
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                logger.warn("Processing {} with request {} didn't succeed: {}", payload, payloadContent, response);
+                logger.warn("Processing {} didn't succeed: {}", payload, response);
             }
         } catch (Throwable e) {
             logger.error("An error occurred while sending payload {} to {}: {}", payload, uri, e.getCause());
@@ -163,10 +163,8 @@ public class RemotePayloadProcessor implements PayloadProcessor {
                     "id='" + id + '\'' +
                     ", modelid='" + modelid + '\'' +
                     ", vModelId=" + (vModelId != null ? ('\'' + vModelId + '\'') : "null") +
-                    ", data='" + data + '\'' +
                     ", kind='" + kind + '\'' +
                     ", status='" + status + '\'' +
-                    ", metadata='" + metadata + '\'' +
                     '}';
         }
     }
