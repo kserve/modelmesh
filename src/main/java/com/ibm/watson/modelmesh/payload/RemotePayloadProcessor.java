@@ -163,8 +163,10 @@ public class RemotePayloadProcessor implements PayloadProcessor {
                     "id='" + id + '\'' +
                     ", modelid='" + modelid + '\'' +
                     ", vModelId=" + (vModelId != null ? ('\'' + vModelId + '\'') : "null") +
+                    ", data='" + data + '\'' +
                     ", kind='" + kind + '\'' +
                     ", status='" + status + '\'' +
+                    ", metadata='" + metadata + '\'' +
                     '}';
         }
     }
