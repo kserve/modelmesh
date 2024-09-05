@@ -23,6 +23,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.grpc.Metadata;
@@ -42,11 +44,27 @@ public class RemotePayloadProcessor implements PayloadProcessor {
 
     private final URI uri;
 
+    private final SSLContext sslContext;
+    private final SSLParameters sslParameters;
+
     private final HttpClient client;
 
     public RemotePayloadProcessor(URI uri) {
+        this(uri, null, null);
+    }
+
+    public RemotePayloadProcessor(URI uri, SSLContext sslContext, SSLParameters sslParameters) {
         this.uri = uri;
-        this.client = HttpClient.newHttpClient();
+        this.sslContext = sslContext;
+        this.sslParameters = sslParameters;
+        if (sslContext != null && sslParameters != null) {
+            this.client = HttpClient.newBuilder()
+                    .sslContext(sslContext)
+                    .sslParameters(sslParameters)
+                    .build();
+        } else {
+            this.client = HttpClient.newHttpClient();
+        }
     }
 
     @Override
