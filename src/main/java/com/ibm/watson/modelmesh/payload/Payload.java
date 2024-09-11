@@ -124,8 +124,6 @@ public class Payload {
                 ", modelId='" + modelId + '\'' +
                 ", method='" + method + '\'' +
                 ", status=" + (status == null ? "request" : String.valueOf(status)) +
-                ", metadata=" + metadata +
-                ", data=" + (data != null ? data.readableBytes() + "B" : "") +
                 '}';
     }
 }
