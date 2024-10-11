@@ -62,7 +62,7 @@
     <litelinks-version>1.7.2</litelinks-version>
     <kv-utils-version>0.5.1</kv-utils-version>
     <etcd-java-version>0.0.24</etcd-java-version>
-    <protobuf-version>3.25.3</protobuf-version>
+    <protobuf-version>3.25.5</protobuf-version>
     <annotation-version>9.0.87</annotation-version>
     <guava-version>33.1.0-jre</guava-version>
     <jackson-databind-version>2.16.2</jackson-databind-version>
