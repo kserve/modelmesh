@@ -57,8 +57,8 @@
     <!--suppress UnresolvedMavenProperty -->
     <jenkins-build-tag>${env.BUILD_TAG}</jenkins-build-tag>  <!-- set by jenkins -->
 
-    <grpc-version>1.60.2</grpc-version>
-    <netty-version>4.1.108.Final</netty-version>
+    <grpc-version>1.63.2</grpc-version>
+    <netty-version>4.1.118.Final</netty-version>
     <litelinks-version>1.7.2</litelinks-version>
     <kv-utils-version>0.5.1</kv-utils-version>
     <etcd-java-version>0.0.24</etcd-java-version>
@@ -436,6 +436,10 @@
     <dependency>
       <groupId>io.grpc</groupId>
       <artifactId>grpc-netty</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-core</artifactId>
     </dependency>
 
     <!-- This is required for compiling on java11+, to provide
