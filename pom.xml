@@ -71,6 +71,10 @@
     <eclipse-collections-version>11.1.0</eclipse-collections-version>
     <log4j2-version>2.23.1</log4j2-version>
     <slf4j-version>1.7.36</slf4j-version>
+    <javax-json-version>1.1.4</javax-json-version>
+    <datadoghq-version>2.7</datadoghq-version>
+    <googlecode-concurrentlinkedhashmap-lru-version>1.4.2</googlecode-concurrentlinkedhashmap-lru-version>
+    <googlecode-findbugs-jsr305-version>3.0.2</googlecode-findbugs-jsr305-version>
     <!-- Care must be taken when updating the prometheus client lib version
          since we have some custom optimized extensions to this -->
     <prometheus-version>0.9.0</prometheus-version>
@@ -130,9 +134,9 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.8.1</version>
+        <version>3.11.0</version>
         <configuration>
-          <release>17</release>
+          <release>21</release>
         </configuration>
       </plugin>
 
@@ -311,20 +315,15 @@
       <version>${litelinks-version}</version>
     </dependency>
 
-    <!--  <dependency>
-        <groupId>com.github.ben-manes.caffeine</groupId>
-        <artifactId>caffeine</artifactId>
-        <version>2.3.1</version>
-    </dependency> -->
     <dependency>
       <groupId>com.googlecode.concurrentlinkedhashmap</groupId>
       <artifactId>concurrentlinkedhashmap-lru</artifactId>
-      <version>1.4.2</version>
+      <version>${googlecode-concurrentlinkedhashmap-lru-version}</version>
     </dependency>
     <dependency>
       <groupId>com.google.code.findbugs</groupId>
       <artifactId>jsr305</artifactId>
-      <version>3.0.2</version>
+      <version>${googlecode-findbugs-jsr305-version}</version>
       <scope>provided</scope>
     </dependency>
 
@@ -393,7 +392,7 @@
     <dependency>
       <groupId>javax.json</groupId>
       <artifactId>javax.json-api</artifactId>
-      <version>1.1.4</version>
+      <version>${javax-json-version}</version>
       <scope>runtime</scope>
     </dependency>
     <!-- it also uses jackson-databind, declared above -->
@@ -403,7 +402,7 @@
     <dependency>
       <groupId>com.datadoghq</groupId>
       <artifactId>java-dogstatsd-client</artifactId>
-      <version>2.7</version>
+      <version>${datadoghq-version}</version>
       <exclusions>
         <!-- This is only needed for UDS channels,
              and brings in a bunch of transitive deps -->

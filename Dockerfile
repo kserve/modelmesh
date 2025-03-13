@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal:latest as build_base
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest as build_base
 
 # https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
 # don't provide "default" values (e.g. 'ARG TARGETARCH=amd64') for non-buildx environments,
@@ -26,20 +26,20 @@ LABEL image="build_base"
 
 USER root
 
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk
 
 RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
-    microdnf --setopt=cachedir=/root/.cache/microdnf --nodocs install \
-       java-17-openjdk-devel \
+    microdnf --setopt=cachedir=/root/.cache/microdnf --nodocs install -y \
+       java-21-openjdk-devel \
        nss \
     && microdnf update --nodocs \
-    && sed -i 's:security.provider.12=SunPKCS11:#security.provider.12=SunPKCS11:g' /usr/lib/jvm/java-17-openjdk-*/conf/security/java.security \
-    && sed -i 's:#security.provider.1=SunPKCS11 ${java.home}/lib/security/nss.cfg:security.provider.12=SunPKCS11 ${java.home}/lib/security/nss.cfg:g' /usr/lib/jvm/java-17-openjdk-*/conf/security/java.security \
+    && sed -i 's:security.provider.12=SunPKCS11:#security.provider.12=SunPKCS11:g' /usr/lib/jvm/java-21-openjdk-*/conf/security/java.security \
+    && sed -i 's:#security.provider.1=SunPKCS11 ${java.home}/lib/security/nss.cfg:security.provider.12=SunPKCS11 ${java.home}/lib/security/nss.cfg:g' /usr/lib/jvm/java-21-openjdk-*/conf/security/java.security \
     && java -version \
     && true
 
 RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
-    microdnf --setopt=cachedir=/root/.cache/microdnf --nodocs install \
+    microdnf --setopt=cachedir=/root/.cache/microdnf --nodocs install -y \
        wget \
        tar \
        gzip \
@@ -76,7 +76,7 @@ RUN --mount=type=cache,target=/root/.m2 \
 
 
 ###############################################################################
-FROM registry.access.redhat.com/ubi8/ubi-minimal:latest AS runtime
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest AS runtime
 
 # TODO: FROM registry.access.redhat.com/ubi8/openjdk-17-runtime:1.15
 
@@ -84,15 +84,15 @@ ARG USER=2000
 
 USER root
 
-ENV JAVA_HOME=/usr/lib/jvm/jre-17-openjdk
+ENV JAVA_HOME=/usr/lib/jvm/jre-21-openjdk
 
 RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
-    microdnf --setopt=cachedir=/root/.cache/microdnf --nodocs install \
-       java-17-openjdk-headless \
+    microdnf --setopt=cachedir=/root/.cache/microdnf --nodocs install -y \
+       java-21-openjdk-headless \
        nss \
     && microdnf update --nodocs \
-    && sed -i 's:security.provider.12=SunPKCS11:#security.provider.12=SunPKCS11:g' /usr/lib/jvm/java-17-openjdk-*/conf/security/java.security \
-    && sed -i 's:#security.provider.1=SunPKCS11 ${java.home}/lib/security/nss.cfg:security.provider.12=SunPKCS11 ${java.home}/lib/security/nss.cfg:g' /usr/lib/jvm/java-17-openjdk-*/conf/security/java.security \
+    && sed -i 's:security.provider.12=SunPKCS11:#security.provider.12=SunPKCS11:g' /usr/lib/jvm/java-21-openjdk-*/conf/security/java.security \
+    && sed -i 's:#security.provider.1=SunPKCS11 ${java.home}/lib/security/nss.cfg:security.provider.12=SunPKCS11 ${java.home}/lib/security/nss.cfg:g' /usr/lib/jvm/java-21-openjdk-*/conf/security/java.security \
     && java -version \
     && true
 
@@ -102,7 +102,7 @@ COPY --from=build /build/target/dockerhome/ /opt/kserve/mmesh/
 WORKDIR /opt/kserve/mmesh
 
 RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
-    microdnf --setopt=cachedir=/root/.cache/microdnf --nodocs install \
+    microdnf --setopt=cachedir=/root/.cache/microdnf --nodocs install -y \
        shadow-utils \
        hostname \
     # Create app user
