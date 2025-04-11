@@ -21,8 +21,10 @@ import org.eclipse.collections.api.map.primitive.ObjectLongMap;
 import org.eclipse.collections.impl.factory.primitive.ObjectLongMaps;
 import org.eclipse.collections.impl.map.mutable.primitive.ObjectLongHashMap;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -64,7 +66,7 @@ public final class UpgradeTracker {
     }
 
     // This is accessed only by instance updater thread
-    private final Map<String[], PerTypeLabelStats> upgradeTracker = new HashMap<>(1);
+    private final Map<List<String>, PerTypeLabelStats> upgradeTracker = new HashMap<>(1);
 
     // Map from replicaset to expiry time, updated via copy-on-write by instance updater thread.
     // Copy-on-write since updates will be be rare and we want to optimize for reads.
@@ -86,7 +88,7 @@ public final class UpgradeTracker {
         if (iid.length() < 7) {
             return; // instance ids must be of non-standard format
         }
-        PerTypeLabelStats ptls = upgradeTracker.get(ir.getLabels());
+        PerTypeLabelStats ptls = upgradeTracker.get(Arrays.asList(ir.getLabels()));
         if (ptls == null) {
             return;
         }
@@ -121,9 +123,9 @@ public final class UpgradeTracker {
         if (iid.length() < 7) {
             return; // instance ids must be of non-standard format
         }
-        PerTypeLabelStats ptls = upgradeTracker.get(ir.getLabels());
+        PerTypeLabelStats ptls = upgradeTracker.get(Arrays.asList(ir.getLabels()));
         if (ptls == null) {
-            upgradeTracker.put(ir.getLabels(), ptls = new PerTypeLabelStats());
+            upgradeTracker.put(Arrays.asList(ir.getLabels()), ptls = new PerTypeLabelStats());
         }
         long now = System.currentTimeMillis();
         // First 6 chars of instance id comes from replicaset name
