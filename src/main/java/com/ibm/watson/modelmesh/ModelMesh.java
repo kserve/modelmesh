@@ -100,8 +100,9 @@ import org.eclipse.collections.impl.factory.primitive.ObjectLongMaps;
 import org.eclipse.collections.impl.list.mutable.primitive.IntArrayList;
 
 import javax.annotation.concurrent.GuardedBy;
-import java.io.File;
-import java.io.InterruptedIOException;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
+import java.io.*;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
@@ -109,6 +110,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.channels.ClosedByInterruptException;
+import java.security.KeyStore;
+import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -428,10 +431,38 @@ public abstract class ModelMesh extends ThriftService
         }
     }
 
+    private static final String SSL_TRUSTSTORE_PATH_PROPERTY = "watson.ssl.truststore.path";
+    private static final String SSL_TRUSTSTORE_PASSWORD_PROPERTY = "watson.ssl.truststore.password";
+
+    private static SSLContext sslContext = null;
+
+    private static SSLContext loadSSLContext() throws Exception {
+        if (sslContext == null) {
+            final String trustStorePath = System.getProperty(SSL_TRUSTSTORE_PATH_PROPERTY);
+            final String trustStorePassword = System.getProperty(SSL_TRUSTSTORE_PASSWORD_PROPERTY);
+
+            if (trustStorePath == null || trustStorePassword == null) {
+                throw new IllegalArgumentException("Truststore settings not found in system properties");
+            }
+
+            final KeyStore trustStore = KeyStore.getInstance("JKS");
+            try (FileInputStream trustStoreStream = new FileInputStream(trustStorePath)) {
+                trustStore.load(trustStoreStream, trustStorePassword.toCharArray());
+            }
+
+            final TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustManagerFactory.init(trustStore);
+
+            sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+        }
+        return sslContext;
+    }
+
     private PayloadProcessor initPayloadProcessor() {
         String payloadProcessorsDefinitions = getStringParameter(MM_PAYLOAD_PROCESSORS, null);
         logger.info("Parsing PayloadProcessor definition '{}'", payloadProcessorsDefinitions);
-        if (payloadProcessorsDefinitions != null && payloadProcessorsDefinitions.length() > 0) {
+        if (payloadProcessorsDefinitions != null && !payloadProcessorsDefinitions.isEmpty()) {
             List<PayloadProcessor> payloadProcessors = new ArrayList<>();
             for (String processorDefinition : payloadProcessorsDefinitions.split(" ")) {
                 try {
@@ -441,7 +472,17 @@ public abstract class ModelMesh extends ThriftService
                     String modelId = uri.getQuery();
                     String method = uri.getFragment();
                     if ("http".equals(processorName)) {
+                        logger.info("Initializing HTTP payload processor");
                         processor = new RemotePayloadProcessor(uri);
+                    } else if ("https".equals(processorName)) {
+                        SSLContext sslContext;
+                        try {
+                            sslContext = loadSSLContext();
+                        } catch (Exception missingAlgorithmException) {
+                            throw new UncheckedIOException(new IOException(missingAlgorithmException));
+                        }
+                        logger.info("Initializing HTTPS payload processor");
+                        processor = new RemotePayloadProcessor(uri, sslContext, sslContext.getDefaultSSLParameters());
                     } else if ("logger".equals(processorName)) {
                         processor = new LoggingPayloadProcessor();
                     }
