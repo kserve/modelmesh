@@ -108,9 +108,6 @@ RUN --mount=type=cache,target=/root/.cache/microdnf:rw \
     # Create app user
     && useradd -c "Application User" -U -u ${USER} -m app \
     && chown -R app:0 /home/app \
-    # Adjust permissions on /etc/passwd to be writable by group root.
-    # The user app is replaced by the assigned UID on OpenShift.
-    && chmod g+w /etc/passwd \
     # In newer Docker there is a --chown option for the COPY command
     && ln -s /opt/kserve/mmesh /opt/kserve/tas \
     && mkdir -p log \
