@@ -111,21 +111,24 @@
     </extensions>
     <plugins>
       <plugin>
-        <groupId>org.xolstice.maven.plugins</groupId>
+        <groupId>io.github.ascopes</groupId>
         <artifactId>protobuf-maven-plugin</artifactId>
-        <version>0.6.1</version>
+        <version>5.0.0</version>
         <configuration>
-          <protocArtifact>com.google.protobuf:protoc:${protobuf-version}:exe:${os.detected.classifier}</protocArtifact>
-          <pluginId>grpc-java</pluginId>
-          <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc-version}:exe:${os.detected.classifier}</pluginArtifact>
+          <protoc>${protobuf-version}</protoc>
+          <plugins>
+            <plugin kind="binary-maven">
+              <groupId>io.grpc</groupId>
+              <artifactId>protoc-gen-grpc-java</artifactId>
+              <version>${grpc-version}</version>
+            </plugin>
+          </plugins>
         </configuration>
         <executions>
           <execution>
             <goals>
-              <goal>compile</goal>
-              <goal>compile-custom</goal>
-              <goal>test-compile</goal>
-              <goal>test-compile-custom</goal>
+              <goal>generate</goal>
+              <goal>generate-test</goal>
             </goals>
           </execution>
         </executions>
