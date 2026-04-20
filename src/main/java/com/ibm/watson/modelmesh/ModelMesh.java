@@ -5738,7 +5738,10 @@ public abstract class ModelMesh extends ThriftService
                                         i1inRange = i1 >= lower;
                                         i2inRange = i2 <= upper;
                                     }
-                                    if (i2inRange || !i1inRange) {
+                                    // Do not update earlierUseIteration when i1 > upper, so that if the model is being
+                                    // used continously, i1 will not be updated to the lastUsedIteration but be able to
+                                    // fall in range of lower and upper interval.
+                                    if (i2inRange || (i1 < lower)) {
                                         ce.earlierUseIteration = i2;
                                     }
                                     ce.lastUsedIteration = iterationCounter;
