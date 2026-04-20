@@ -31,6 +31,9 @@ import io.netty.handler.codec.base64.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+
 /**
  * A {@link PayloadProcessor} that sends payloads to a remote service via HTTP POST.
  */
@@ -41,12 +44,27 @@ public class RemotePayloadProcessor implements PayloadProcessor {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final URI uri;
+    private final SSLContext sslContext;
+    private final SSLParameters sslParameters;
 
     private final HttpClient client;
 
     public RemotePayloadProcessor(URI uri) {
+        this(uri, null, null);
+    }
+
+    public RemotePayloadProcessor(URI uri, SSLContext sslContext, SSLParameters sslParameters) {
         this.uri = uri;
-        this.client = HttpClient.newHttpClient();
+        this.sslContext = sslContext;
+        this.sslParameters = sslParameters;
+        if (sslContext != null && sslParameters != null) {
+            this.client = HttpClient.newBuilder()
+                    .sslContext(sslContext)
+                    .sslParameters(sslParameters)
+                    .build();
+        } else {
+            this.client = HttpClient.newHttpClient();
+        }
     }
 
     @Override
